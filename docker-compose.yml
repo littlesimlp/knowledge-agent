@@ -1,0 +1,24 @@
+# 现代 Compose v2 语法：不要写 version 字段（已废弃，写了会告警）
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      # 只绑定本机回环，不要把数据库暴露到局域网
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # 命名卷：容器删了，数据还在
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  pgdata:
