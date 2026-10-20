@@ -27,3 +27,7 @@ backups/
 Thumbs.db
 .idea/
 .vscode/
+
+# personal learning journal stays local (keep the guide)
+docs/journal/*.md
+!docs/journal/README.md
