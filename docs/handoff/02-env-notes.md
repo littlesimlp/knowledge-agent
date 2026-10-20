@@ -15,29 +15,13 @@
 | 编辑器 | <VS Code + 扩展> | |
 
 ## 2. 安装与启动过程中遇到的问题
-未发现问题
-五步启动
-BASH
-复制
-# 1. 克隆
-git clone https://github.com/littlesimlp/knowledge-agent.git
-cd knowledge-agent
+### 问题 1：git push 时报 `Recv failure: Connection was reset`
 
-# 2. 创建本地配置（.env 不进版本库）
-cp .env.example .env
-#    然后编辑 .env，把 POSTGRES_PASSWORD 改成你的密码
-
-# 3. 构建并启动（首次会下载镜像，约 1–3 分钟）
-docker compose up -d
-
-# 4. 确认两个服务都健康
-docker compose ps
-#    db   → Up (healthy)
-#    api  → Up (healthy)
-
-# 5. 验证接口
-curl http://127.0.0.1:8000/health
-#    {"status":"ok"}
+- 发现时机：执行 `git push -u origin docs/wx-env-notes` 时
+- 报错原文：`fatal: unable to access 'https://github.com/...': Recv failure: Connection was reset`
+- 原因：本机访问 GitHub 直连被重置，git 默认不读取系统代理
+- 解决方式：为当前终端设置 HTTP_PROXY / HTTPS_PROXY 指向本地代理端口后重试
+- 状态：已解决
 
 ## 3. 快速开始五步验证结果
 
