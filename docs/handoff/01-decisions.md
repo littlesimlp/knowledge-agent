@@ -111,14 +111,20 @@
 
 ---
 
-## D-011（待定）SQLAlchemy 使用异步还是同步
+## D-011 采用全异步数据库访问（SQLAlchemy async + asyncpg）—— 已决定
 
 - **背景**：M1 开始引入 ORM，这个决定会贯穿所有后续代码
-- **倾向**：**异步**（SQLAlchemy 2.0 async + asyncpg）
-- **理由**：项目核心是 AI，模型调用、文件解析、检索都是 I/O 密集；同步会在 M4 成为返工点
-- **代价**：session 生命周期更难掌握；Alembic 需要单独配置一条同步连接来跑迁移
-- **替代方案**：同步 + `psycopg` —— 更接近作者的 Spring 经验，但会与 FastAPI 的 async 模型混合
-- **状态**：M1-1 开始前必须拍板，拍板后把本条改为"已决定"
+- **决策**：**全异步**。`create_async_engine` + `AsyncSession` + `asyncpg`，迁移用 Alembic 的 async 模板
+- **理由**：
+  1. 项目核心是 AI。一次模型调用是数秒级 I/O 等待，同步会把线程全程占住
+  2. FastAPI 生态（LLM SDK、httpx）原生 async，混用要时刻提防"在 async 里调用同步阻塞代码"，而那种错误会卡死整个事件循环
+  3. 若先做同步，M4 做 RAG 时要返工所有 repository 函数 + endpoint + Alembic 配置
+- **代价**：
+  1. 关系属性**不能懒加载**，必须 `selectinload()` 显式预加载，否则报 `MissingGreenlet`
+  2. `AsyncSession` 不能跨协程共享，必须"每请求一个 session"
+  3. Alembic 要用 `-t async` 模板，并在 `env.py` 里处理 `run_sync`
+- **替代方案**：同步 + `psycopg` —— 更接近作者的 Spring 经验、上手更快。否决原因：作者目标是"学对 + 不走回头路"，而不是最快看到结果
+- **状态**：**已决定（2026-10-19）**
 
 ---
 
