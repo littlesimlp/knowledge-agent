@@ -144,6 +144,9 @@ D:\personal-agent\
 | GitHub 访问 | winget / push 超时 | 需要开 Clash（`127.0.0.1:7890`，git 已配代理） |
 | Docker 数据增长 | C 盘被吃满 | 数据盘已在 D 盘；定期 `docker builder prune -f` |
 | 删数据 | `down -v` 会删卷 | **永远不要**手贱 `docker compose down -v` |
+| Python 文本编码 | `print` 中文乱码；`open()` 默认 cp936 读 UTF-8 文件出错 | 设置用户环境变量 `PYTHONUTF8=1`，让 Windows 行为对齐 Linux 容器 |
+| Alembic 找不到 app 包 | `ModuleNotFoundError: No module named 'app'` | `env.py` 里必须把 `backend/` 注入 `sys.path` |
+| Alembic 密码含 `%` | configparser 插值报错 | `set_main_option` 前 `.replace("%", "%%")` |
 
 其他约定：
 
