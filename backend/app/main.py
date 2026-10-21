@@ -2,7 +2,11 @@
 
 from fastapi import FastAPI
 
+from app.api.routes import entries
+
 app = FastAPI(title="Knowledge Agent API", version="0.1.0")
+
+app.include_router(entries.router)
 
 
 @app.get("/health")
