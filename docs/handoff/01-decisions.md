@@ -154,3 +154,49 @@
 - **替代方案**：把 Python 注释全部改成英文 —— 否决。注释是学习产物，中文表达更精确；且 `docs/` 全为中文，混排反而割裂
 - **副作用记录**：`RUF100`（无用 noqa）很有价值，它一次性发现 3 个"防根本不存在的错"的安慰剂注释
 - **状态**：**已决定（2026-10-21）**
+
+---
+
+## D-014 测试用真实 PostgreSQL + 每测试一事务回滚
+
+- **背景**：M1-4 引入自动化测试，必须解决三件事：① 不能污染开发库 ② 测试之间必须隔离 ③ CI 里也要能跑
+- **决策**：
+  1. 独立的测试库 `knowledge_test`（与开发库 `knowledge` 分开）
+  2. 用**真实 PostgreSQL**（CI 里用 `services: postgres` 起一个容器），**不用 SQLite**
+  3. 每个测试跑在一个外层事务里，`AsyncSession(bind=conn, join_transaction_mode="create_savepoint")`；测试结束 `rollback`，表结构保留
+  4. 通过 `app.dependency_overrides[get_session]` 注入测试 session，**不改生产代码**
+  5. 用 `httpx.AsyncClient` + `ASGITransport(app=app)`，进程内直连 ASGI 应用，不起真实服务、不占端口
+- **理由**：
+  - SQLite 与 PostgreSQL 在 `Uuid`、`timestamptz`、`server_default now()`、约束行为上都不同。**用 SQLite 测一个 PG 项目，等于在测一个不存在的系统**
+  - `join_transaction_mode="create_savepoint"` 是必要的：接口内部会 `session.commit()`，没有它 commit 会提交外层事务，回滚机制失效
+  - `dependency_overrides` 让"换数据库"只发生在测试配置里，生产代码零改动
+  - ASGITransport 让 7 个测试在 0.8 秒内跑完
+- **代价**：
+  - CI 里多一个 service 容器，job 启动多约 10 秒
+  - 本地必须先手动建一次 `knowledge_test` 库
+  - session 级异步夹具会撞上 pytest-asyncio 的事件循环作用域问题，所以建表夹具用**同步夹具 + `asyncio.run`** 绕开
+- **替代方案**：
+  - SQLite 内存库 —— 否决，与生产行为不一致
+  - 每个测试重建表（`drop_all`/`create_all`）—— 否决，慢且易并行冲突
+- **验证手段**：写了一个"元测试" `test_tests_are_isolated`，它断言"上一条测试什么都没留下"。隔离机制如果失效，这个测试会失败
+- **状态**：**已决定（2026-10-21）**
+
+---
+
+## D-015 API 语义：PATCH 部分更新、统一 404、契约层与 ORM 分离
+
+- **背景**：M1-3 写 CRUD 时需要定几个接口语义，这些一旦定下、前端依赖之后就很难改
+- **决策**：
+  1. 更新用 **`PATCH`** 而不是 `PUT`，实现上用 `payload.model_dump(exclude_unset=True)` 只写客户端真正传了的字段
+  2. "资源不存在"和"资源存在但属于别的 workspace"**都返回 404**，不区分 403
+  3. 请求/响应体用独立的 Pydantic 模型（`schemas/`），**不复用 ORM 模型**
+  4. 列表接口在**服务端**按 `workspace_id` 过滤，不依赖前端
+- **理由**：
+  - `PUT` 的语义是整体替换。用户只想改分类时，`PUT` 会强迫客户端传全部字段，漏传就把数据抹了
+  - 若"存在但无权访问"返回 403，攻击者可通过 403/404 的差异探测出哪些 id 真实存在。统一 404 信息量为零
+  - ORM 模型描述"数据库长什么样"，可能含内部字段（软删除标记、内部备注）；直接当响应体用迟早泄露
+  - 需求文档硬性要求：所有读写必须在服务端限定空间范围
+- **代价**：
+  - `PATCH` + `exclude_unset` 比 `PUT` 多一层理解成本
+  - 契约层要维护两套字段定义，改字段要动两处
+- **状态**：**已决定（2026-10-21）**
