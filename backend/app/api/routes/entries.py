@@ -1,6 +1,7 @@
 """知识条目接口。"""
 
 import uuid
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -16,6 +17,11 @@ from app.schemas.knowledge_entry import (
 
 router = APIRouter(prefix="/api/entries", tags=["entries"])
 
+# FastAPI 官方推荐的依赖声明方式。
+# 相比 session: AsyncSession = Depends(get_session)，Annotated 不会触发 B008
+# （"默认参数里不要调用函数"），并且类型信息对编辑器更友好。
+SessionDep = Annotated[AsyncSession, Depends(get_session)]
+
 
 async def _get_entry_or_404(
     entry_id: uuid.UUID,
@@ -23,7 +29,7 @@ async def _get_entry_or_404(
 ) -> KnowledgeEntry:
     """按 id 取条目；不存在或不属于当前空间时一律返回 404。
 
-    故意不区分"不存在"和"存在但无权访问"——否则通过 403/404 的差异
+    故意不区分「不存在」和「存在但无权访问」——否则通过 403/404 的差异
     就能探测出别的空间里有哪些 id。
     """
     entry = await session.get(KnowledgeEntry, entry_id)
@@ -43,7 +49,7 @@ async def _get_entry_or_404(
 )
 async def create_entry(
     payload: KnowledgeEntryCreate,
-    session: AsyncSession = Depends(get_session),
+    session: SessionDep,
 ) -> KnowledgeEntry:
     entry = KnowledgeEntry(
         **payload.model_dump(),
@@ -51,8 +57,7 @@ async def create_entry(
     )
     session.add(entry)
     await session.commit()
-    # 必须 refresh：created_at/updated_at 是数据库端生成的，
-    # 不 refresh 就取不到值（异步下会抛 MissingGreenlet）
+    # 必须 refresh：created_at/updated_at 是数据库端生成的
     await session.refresh(entry)
     return entry
 
@@ -62,9 +67,7 @@ async def create_entry(
     response_model=list[KnowledgeEntryRead],
     summary="列出知识条目",
 )
-async def list_entries(
-    session: AsyncSession = Depends(get_session),
-) -> list[KnowledgeEntry]:
+async def list_entries(session: SessionDep) -> list[KnowledgeEntry]:
     result = await session.execute(
         select(KnowledgeEntry)
         .where(KnowledgeEntry.workspace_id == DEFAULT_WORKSPACE_ID)
@@ -78,10 +81,7 @@ async def list_entries(
     response_model=KnowledgeEntryRead,
     summary="获取单条知识条目",
 )
-async def get_entry(
-    entry_id: uuid.UUID,
-    session: AsyncSession = Depends(get_session),
-) -> KnowledgeEntry:
+async def get_entry(entry_id: uuid.UUID, session: SessionDep) -> KnowledgeEntry:
     return await _get_entry_or_404(entry_id, session)
 
 
@@ -93,12 +93,11 @@ async def get_entry(
 async def update_entry(
     entry_id: uuid.UUID,
     payload: KnowledgeEntryUpdate,
-    session: AsyncSession = Depends(get_session),
+    session: SessionDep,
 ) -> KnowledgeEntry:
     entry = await _get_entry_or_404(entry_id, session)
 
-    # exclude_unset=True：只处理客户端真正传了的字段，
-    # 没传的字段保持原值。不加这个参数会把所有 None 写进去。
+    # exclude_unset=True：只处理客户端真正传了的字段
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(entry, field, value)
 
@@ -113,10 +112,7 @@ async def update_entry(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="删除知识条目",
 )
-async def delete_entry(
-    entry_id: uuid.UUID,
-    session: AsyncSession = Depends(get_session),
-) -> None:
+async def delete_entry(entry_id: uuid.UUID, session: SessionDep) -> None:
     entry = await _get_entry_or_404(entry_id, session)
     await session.delete(entry)
     await session.commit()

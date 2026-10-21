@@ -12,9 +12,9 @@ from alembic import context
 # 把 backend/ 加入 sys.path，否则 alembic 找不到 app 包
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.core.config import settings  # noqa: E402
-from app.db.base import Base  # noqa: E402
-import app.models  # noqa: E402, F401
+import app.models  # noqa: F401
+from app.core.config import settings
+from app.db.base import Base
 
 config = context.config
 

@@ -20,6 +20,27 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
+# Alembic 生成的迁移文件不参与风格检查
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort（import 排序）
+    "UP",  # pyupgrade（用现代语法）
+    "B",   # flake8-bugbear（常见陷阱）
+    "RUF", # ruff 自有规则
+]
+
+ignore = [
+    # These rules look for homoglyph attacks (e.g. Cyrillic 'а' pretending to be Latin 'a').
+    # Comments and docstrings in this project are Chinese, so fullwidth punctuation
+    # (，：；（）) is correct writing, not a security concern.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+]
 
 [dependency-groups]
 dev = [
