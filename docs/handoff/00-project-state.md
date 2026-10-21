@@ -147,6 +147,8 @@ D:\personal-agent\
 | Python 文本编码 | `print` 中文乱码；`open()` 默认 cp936 读 UTF-8 文件出错 | 设置用户环境变量 `PYTHONUTF8=1`，让 Windows 行为对齐 Linux 容器 |
 | Alembic 找不到 app 包 | `ModuleNotFoundError: No module named 'app'` | `env.py` 里必须把 `backend/` 注入 `sys.path` |
 | Alembic 密码含 `%` | configparser 插值报错 | `set_main_option` 前 `.replace("%", "%%")` |
+| Alembic autogenerate 删表 | 库里手工建的表被当成"已删除"，生成 `drop_table` | **迁移文件必须人工 review**；开发库的临时表先清掉再 autogenerate |
+| VS Code 新建文件落错目录 | `ModuleNotFoundError`（文件在 `app/` 而不是 `app/models/`） | **先用 `New-Item -Path 完整路径` 建空文件，再在 VS Code 编辑**；或新建前先选中目标文件夹 |
 
 其他约定：
 
