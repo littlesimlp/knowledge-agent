@@ -32,3 +32,15 @@ class KnowledgeEntryRead(BaseModel):
     category: str | None
     created_at: datetime
     updated_at: datetime
+
+class KnowledgeEntryUpdate(BaseModel):
+    """更新知识条目的请求体。
+
+    所有字段可选：不传 = 不改；传 null = 清空（仅对可空字段有效）。
+    这是 PATCH 的语义，区别于 PUT 的"整体替换"。
+    """
+
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    content: str | None = Field(default=None, min_length=1)
+    summary: str | None = None
+    category: str | None = Field(default=None, max_length=100)

@@ -1,5 +1,13 @@
 """请求/响应模型包。"""
 
-from app.schemas.knowledge_entry import KnowledgeEntryCreate, KnowledgeEntryRead
+from app.schemas.knowledge_entry import (
+    KnowledgeEntryCreate,
+    KnowledgeEntryRead,
+    KnowledgeEntryUpdate,
+)
 
-__all__ = ["KnowledgeEntryCreate", "KnowledgeEntryRead"]
+__all__ = [
+    "KnowledgeEntryCreate",
+    "KnowledgeEntryRead",
+    "KnowledgeEntryUpdate",
+]
