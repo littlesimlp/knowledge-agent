@@ -4,5 +4,15 @@
 """
 
 from app.models.knowledge_entry import KnowledgeEntry
+from app.models.knowledge_source import (
+    KnowledgeEntrySource,
+    KnowledgeSource,
+    SourceType,
+)
 
-__all__ = ["KnowledgeEntry"]
+__all__ = [
+    "KnowledgeEntry",
+    "KnowledgeEntrySource",
+    "KnowledgeSource",
+    "SourceType",
+]
