@@ -8,9 +8,15 @@
 """
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# backend/app/core/config.py → parents[2] 是：
+#   本机  = D:\personal-agent\backend
+#   容器  = /app
+_BACKEND_DIR = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
@@ -23,6 +29,10 @@ class Settings(BaseSettings):
 
     app_name: str = "Knowledge Agent API"
     app_version: str = "0.1.0"
+    # 上传文件落盘目录；容器里由 compose 注入 DATA_DIR=/app/data
+    data_dir: Path = _BACKEND_DIR / "data"
+    # 单文件大小上限，默认 5 MB
+    max_upload_bytes: int = 5 * 1024 * 1024
 
     db_host: str = "127.0.0.1"
     db_port: int = 5432
@@ -53,7 +63,6 @@ class Settings(BaseSettings):
             f"postgresql+asyncpg://{self.db_user}:***"
             f"@{self.db_host}:{self.db_port}/{self.db_name}"
         )
-
 
 @lru_cache
 def get_settings() -> Settings:
