@@ -15,6 +15,10 @@ RUN uv sync --frozen --no-dev
 # Copy code after deps: editing code only rebuilds the layers below
 COPY app ./app
 
+# lembic upgrade head
+COPY alembic.ini ./
+COPY alembic ./alembic
+
 # Make uvicorn available inside the container
 ENV PATH="/app/.venv/bin:$PATH"
 
