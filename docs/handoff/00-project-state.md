@@ -5,8 +5,8 @@
 >
 > **维护规则**：每完成一个里程碑更新一次。只写结论和现状，不写过程流水账。
 
-- 最后更新：2026-10-21
-- 当前里程碑：**M1 已完成**，M2 待开始
+- 最后更新：2026-10-22
+- 当前里程碑：**M2-1 ~ M2-4 已完成**（文本导入链路已可用），下一步 M2-5（PDF 解析）
 - 维护人：项目作者本人
 
 ---
@@ -107,11 +107,16 @@ D:\personal-agent\
 |---|---|---|
 | `knowledge_entries` | 知识条目：id(uuid) / workspace_id / title / content / summary / category / created_at / updated_at | ✅ 已建 |
 | `alembic_version` | Alembic 自己维护的迁移版本 | ✅ |
-| `knowledge_sources` | 来源：source_type / source_name / source_url / file_path / source_excerpt | ⬜ M2-1 |
-| `knowledge_entry_sources` | 条目↔来源 关联表（联合主键 + 两个 CASCADE 外键） | ⬜ M2-1 |
+| `knowledge_sources` | 来源：source_type / source_name / source_url / file_path / **extracted_text** / source_excerpt / created_at | ✅ 已建 |
+| `knowledge_entry_sources` | 条目↔来源 关联表（联合主键 + 两个 CASCADE 外键） | ✅ 已建 |
 
 - `DEFAULT_WORKSPACE_ID = 00000000-0000-0000-0000-000000000001`，第一版所有数据都落在这个空间（决策 D-003）
-- 当前迁移 head：`8f8fc906784b`（create knowledge entries table）
+- `source_type` 存 VARCHAR(20) 而非原生 enum（D-017 相关：便于扩展取值）
+- 当前迁移 head：`3d2cb6bc4b94`（add knowledge sources and entry-source link）
+
+**已知的数据一致性缺口（待决策）**：删除知识条目时，`ON DELETE CASCADE` 只清理关联表行，
+**来源记录和磁盘文件会残留为"孤儿"**。三种处理方式（连带删除 / 保留并定期清理 / 不处理）
+尚未决定，见 `01-decisions.md` 的待定条目。
 
 ---
 
@@ -125,6 +130,17 @@ D:\personal-agent\
 | GET | `/api/entries/{id}` | 200 / 404 | 单条 |
 | PATCH | `/api/entries/{id}` | 200 / 404 | 部分更新（`exclude_unset=True`） |
 | DELETE | `/api/entries/{id}` | 204 / 404 | 删除 |
+| POST | `/api/imports/text` | 201 / 422 | 导入粘贴文本（JSON body） |
+| POST | `/api/imports/file` | 201 / 413 / 415 / 422 | 导入文本文件（multipart） |
+
+**导入接口的状态码含义**：
+
+| 码 | 触发条件 | 用户该看到 |
+|---|---|---|
+| 201 | 解析成功并入库 | 正常 |
+| 413 | 文件超过 `max_upload_bytes`（默认 5 MB） | 文件太大 |
+| 415 | 后缀不在 `.txt/.md/.markdown` 白名单 | 类型不支持（PDF 在 M2-5 支持） |
+| 422 | 解析结果为空（`EMPTY`）或失败（`FAILED`） | 具体原因取自 `ParseResult.message` |
 
 交互式文档：<http://127.0.0.1:8000/docs>
 
@@ -168,25 +184,27 @@ D:\personal-agent\
 
 ### M2（当前目标）：文件解析与来源
 
+**实施顺序在 M2-2 时调整过（D-019）：先文本、后 PDF**，理由是"最小可用优先"——
+真实使用后发现 JSON 接口无法导入多行文本，进一步印证了这个顺序。
+
 | 步骤 | 内容 | 状态 |
 |---|---|---|
-| M2-1 | `KnowledgeSource` + `KnowledgeEntrySource` + 迁移 | ⬜ |
-| M2-2 | 解析器层：PDF（PyMuPDF）/ Markdown / TXT + 单元测试 | ⬜ |
-| M2-3 | 上传接口（multipart）+ 文件落盘（bind mount `./data/uploads`） | ⬜ |
-| M2-4 | 从文件到知识条目的完整流程 + 测试 | ⬜ |
+| M2-1 | `KnowledgeSource` + `KnowledgeEntrySource` + 迁移 | ✅ 已完成（PR #2） |
+| M2-2 | 解析器基础设施 + TXT/Markdown 解析 + 10 个测试 | ✅ 已完成（PR #3） |
+| M2-3 | `POST /api/imports/text`：文本 → 来源 + 条目 + 关联 | ✅ 已完成（PR #4） |
+| M2-4 | 文件上传（multipart）+ 落盘 + 复用解析器 + 抽 service 层 | ✅ 已完成（PR #5） |
+| M2-5 | PDF 解析（PyMuPDF）**+ 扫描件检测（D-018：平均每页 < 25 字符 → EMPTY）** | ⬜ 下一步 |
+| M2-6 | 页眉/页脚/页码噪音过滤（D-016） | ⬜ |
 
-**M2 开工前必须先回答的三个需求问题（需求文档里没写，需要自己决定并记录）：**
-
-1. 一个 300 页的技术手册：全文入库还是截断？截断阈值是多少？
-2. 扫描版 PDF（无文字层）：提取结果为空，如何向用户区分"解析失败"和"这份文件本来就没有文字"？
-3. 页眉/页脚/页码/目录：这些是噪音不是知识，在解析阶段过滤还是保留？
+**M2 真正的交付线已达到**：可以用一条命令把 `.md`/`.txt` 笔记存进知识库，
+原文完整保存在 `knowledge_sources.extracted_text`，文件落在 `backend/data/uploads/`（git 已忽略）。
 
 ### 之后
 
-- **M3**：AI 整理建议（标题/摘要/关键词/分类）+ 确认式写入
+- **M3**：AI 整理建议（标题/摘要/关键词/分类）+ 确认式写入；**前端的引入时点**
+  （现在只有 API，没有界面；实际使用后已明确感受到"手工 curl 太别扭"）
 - **M4**：基础 RAG（PG 全文检索 → 交给模型 → 回答带真实条目与来源引用）
 - **M5**：备份恢复演练 + 真实部署给自己用
-- 前端引入时机待定（建议至少 M3 之后，先把 API 打通）
 
 ---
 
@@ -215,6 +233,11 @@ D:\personal-agent\
 | **PowerShell 5.1 读文件** | `Get-Content` 默认按 GBK 解码 UTF-8，**看起来像文件损坏** | 用 `Get-Content x -Encoding UTF8`，或用 VS Code / 读取工具复核。**报"文件异常"前必须用第二种工具验证** |
 | PowerShell `curl.exe -d` | 转义引号被吞，服务端收到 `{category:Docker}` | 用 `/docs` 页面写数据，或把 JSON 存文件后 `--data-binary @file` |
 | `Invoke-RestMethod` 中文响应 | 显示 `é¨å` 乱码（数据本身正确） | 读接口用 `curl.exe`；PS 5.1 按 ISO-8859-1 解码响应 |
+| **JSON body 传多行文本** | `422 json_invalid: Invalid control character at` | JSON 字符串不允许裸换行。**真实笔记一律走 `/api/imports/file`（multipart）**，或用 Python 脚本 `json.dumps` |
+| **`write_text` 转译换行** | 测试里造 CRLF 输入，实际写出 `\r\r\n`，断言失败 | 测试辅助函数用 `write_text(..., newline="")`；跨平台差异必须显式指定 |
+| **"追加" vs "整份替换"** | 让追加测试结果整份覆盖，丢了原有的 6 个测试 | 改完立刻 `pytest --collect-only -q` 核对**测试数量**，比等 lint 报错快 |
+| **用户文件名不可信** | 可能含 `../../config.py` 或 Windows 保留名 | 只取后缀并白名单校验，磁盘名用 `uuid4().hex` 生成；原始名只存 `source_name` 用于展示 |
+| 测试用的真实数据放错位置 | 仓库根目录出现未跟踪的真实笔记 | **测试数据只放 `backend/data/`（已 gitignore）或仓库外**，用完即删 |
 | 容器里的 localhost | 连不上数据库 | 容器间用**服务名** `db:5432` |
 | uvicorn 绑定地址 | 容器外访问不到 | 容器内必须 `--host 0.0.0.0` |
 | GitHub 访问 | winget / push 超时 | 需要开 Clash（`127.0.0.1:7890`）；临时绕过：`git -c http.proxy= -c https.proxy= push` |

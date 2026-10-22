@@ -10,7 +10,8 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.146-009688)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)
 
-**当前状态：M0（工程骨架）与 M1（知识条目 CRUD）已完成，CI 全绿。下一步是 M2 文件解析。**
+**当前状态：M0 / M1 已完成，M2 的文本导入链路（M2-1 ~ M2-4）已可实际使用——可以用一条命令把
+`.md` / `.txt` 笔记存进知识库。下一步 M2-5：PDF 解析。**
 进度、已知的坑与决策详见 [`docs/handoff/00-project-state.md`](docs/handoff/00-project-state.md)。
 
 ---
@@ -137,7 +138,7 @@ docker compose exec -T db psql -U knowledge -d knowledge -c "create database kno
 ```bash
 cd backend
 uv run python -m pytest -q
-# 7 passed
+# 28 passed
 ```
 
 测试用 `httpx.AsyncClient` + `ASGITransport` 在进程内直连 ASGI 应用，**不启动真实服务、不占端口**。
@@ -152,8 +153,31 @@ uv run python -m pytest -q
 | GET | `/api/entries/{id}` | 200 / 404 | 获取单条 |
 | PATCH | `/api/entries/{id}` | 200 / 404 | 部分更新（只改传入的字段） |
 | DELETE | `/api/entries/{id}` | 204 / 404 | 删除 |
+| POST | `/api/imports/text` | 201 / 422 | 导入粘贴文本（JSON） |
+| POST | `/api/imports/file` | 201 / 413 / 415 / 422 | 导入文本文件（multipart） |
 
-创建示例：
+### 导入一篇笔记（推荐方式）
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/imports/file \
+  -F "file=@我的笔记.md" \
+  -F "title=笔记标题" \
+  -F "category=Docker"
+```
+
+一次导入会写入三条记录：
+
+1. `knowledge_sources` —— **原文全文**（`extracted_text`）+ 文件路径 + 200 字展示片段
+2. `knowledge_entries` —— 知识条目（`content` 缺省等于原文）
+3. `knowledge_entry_sources` —— 两者的关联
+
+上传的文件落在 `backend/data/uploads/<uuid>.<ext>`（已 gitignore，不会进库）。
+**磁盘文件名是重新生成的 uuid**，原始文件名只保存在 `source_name` 字段里用于展示——
+这是防止路径穿越的必要措施。
+
+支持的类型：`.txt` / `.md` / `.markdown`（PDF 在 M2-5 支持），单文件默认上限 5 MB。
+
+> 创建示例（不使用导入接口时）：
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/entries \
@@ -163,6 +187,9 @@ curl -X POST http://127.0.0.1:8000/api/entries \
 
 > 时间字段（`created_at` / `updated_at`）返回 **UTC**，由前端负责转换为本地时间。
 > 更新接口是 `PATCH`（部分更新），不是 `PUT`（整体替换）。
+>
+> ⚠️ **多行文本不要走 JSON 接口**——JSON 字符串不允许裸换行，会报 `422 Invalid control character`。
+> 真实笔记请用上面的 `multipart` 文件接口。
 
 ## 项目结构
 
@@ -189,7 +216,10 @@ knowledge-agent/
     │   ├── db/                   # 引擎、session、Base
     │   ├── models/               # ORM 模型
     │   ├── schemas/              # 请求/响应契约
+    │   ├── parsers/              # 文件解析（按后缀分发，PDF 在 M2-5 加入）
+    │   ├── services/             # 业务服务（导入编排、文件落盘）
     │   └── api/routes/           # 路由
+    ├── data/                     # 上传文件落盘（已 gitignore）
     └── tests/                    # pytest（独立测试库 + 事务回滚）
 ```
 
