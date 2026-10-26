@@ -28,6 +28,8 @@ class ParseResult:
     text: str = ""
     message: str = ""
     page_count: int | None = None
+    # 逐页文本，只有 PDF 这类有"页"概念的格式才填；M2-6 的噪音过滤需要它
+    pages: tuple[str, ...] = ()
 
     @property
     def ok(self) -> bool:
