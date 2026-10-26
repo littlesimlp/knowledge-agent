@@ -175,7 +175,8 @@ curl -X POST http://127.0.0.1:8000/api/imports/file \
 **磁盘文件名是重新生成的 uuid**，原始文件名只保存在 `source_name` 字段里用于展示——
 这是防止路径穿越的必要措施。
 
-支持的类型：`.txt` / `.md` / `.markdown`（PDF 在 M2-5 支持），单文件默认上限 5 MB。
+支持的类型：`.txt` / `.md` / `.markdown` / `.pdf`，单文件默认上限 5 MB。
+PDF 若没有文字层（扫描件），会返回 422 并说明需要 OCR——当前版本不支持 OCR。
 
 > 创建示例（不使用导入接口时）：
 
@@ -339,4 +340,7 @@ chore(deps): bump fastapi to 0.147
 
 ## License
 
-尚未选定。在选定之前，默认保留所有权利。
+本项目采用 [AGPL-3.0](LICENSE)。
+
+选择它的原因：PDF 解析依赖 PyMuPDF（AGPL-3.0 双许可），而 AGPL 要求衍生作品以同样许可发布。
+详见 `docs/handoff/01-decisions.md` 的 D-017。

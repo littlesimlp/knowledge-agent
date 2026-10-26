@@ -15,9 +15,8 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from app.api.routes.entries import SessionDep
 from app.core.config import settings
 from app.models.knowledge_source import SourceType
-from app.parsers import parse_file
+from app.parsers import SUPPORTED_SUFFIXES, parse_file
 from app.parsers.base import ParseStatus
-from app.parsers.text import TEXT_SUFFIXES
 from app.schemas.imports import TextImportRequest, TextImportResult
 from app.schemas.knowledge_entry import KnowledgeEntryRead
 from app.schemas.knowledge_source import KnowledgeSourceRead
@@ -82,8 +81,8 @@ async def import_file(
     original_name = file.filename or "unnamed"
     suffix = Path(original_name).suffix.lower()
 
-    if suffix not in TEXT_SUFFIXES:
-        supported = "、".join(sorted(TEXT_SUFFIXES))
+    if suffix not in SUPPORTED_SUFFIXES:
+        supported = "、".join(sorted(SUPPORTED_SUFFIXES))
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail=f"暂不支持 {suffix or '无扩展名'} 文件，当前支持：{supported}",
