@@ -156,11 +156,31 @@ async def test_import_unsupported_file_type(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(settings, "data_dir", tmp_path)
-    files = {"file": ("doc.pdf", b"%PDF-1.4", "application/pdf")}
+    # .docx 仍不在支持列表里（.pdf 已在 M2-5 支持）
+    files = {
+        "file": (
+            "doc.docx",
+            b"PK\x03\x04fake",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+    }
 
     response = await client.post("/api/imports/file", files=files)
 
     assert response.status_code == 415
+
+async def test_import_broken_pdf_returns_422(
+    client: AsyncClient,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """.pdf 已在支持列表，但内容损坏时应返回 422（解析失败）而不是 415。"""
+    monkeypatch.setattr(settings, "data_dir", tmp_path)
+    files = {"file": ("broken.pdf", b"%PDF-1.4 not really a pdf", "application/pdf")}
+
+    response = await client.post("/api/imports/file", files=files)
+
+    assert response.status_code == 422
 
 
 async def test_import_oversized_file_rejected(

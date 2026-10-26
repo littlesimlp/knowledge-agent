@@ -74,15 +74,6 @@ def test_unsupported_suffix(tmp_path: Path) -> None:
     result = parse_file(path)
     assert result.status is ParseStatus.UNSUPPORTED
 
-
-def test_pdf_is_unsupported_for_now(tmp_path: Path) -> None:
-    """PDF 支持在 M2-5，此测试固定当前行为，M2-5 时必须改写它。"""
-    path = _write(tmp_path, "doc.pdf", "%PDF-1.4 fake")
-    result = parse_file(path)
-    assert result.status is ParseStatus.UNSUPPORTED
-    assert ".pdf" in result.message
-
-
 def test_missing_file(tmp_path: Path) -> None:
     result = parse_file(tmp_path / "nope.txt")
     assert result.status is ParseStatus.FAILED
