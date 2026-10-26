@@ -137,9 +137,9 @@ docker compose exec api alembic upgrade head
 docker compose exec api alembic current
 # 3d2cb6bc4b94 (head)
 ```
-> ⚠️ 不要在开发库上执行 alembic downgrade——它会 DROP 表，且不保留数据。 需要验证迁移可逆性时，切到测试库 knowledge_test 再跑（CI 里已经自动做这件事）。
 
-
+> ⚠️ **不要在开发库上执行 `alembic downgrade`**——它会 DROP 表，且不保留数据。
+> 需要验证迁移可逆性时，切到测试库 `knowledge_test` 再跑（CI 里已经自动做这件事）。
 
 ## 测试
 
