@@ -123,6 +123,24 @@ uv run alembic upgrade head                            # 应用未执行的迁�
 >
 > ⚠️ **本地不要在开发库上执行 `alembic downgrade`** ——它会 DROP 表。需要验证迁移可逆性时切到测试库（见下）。
 
+### 数据库迁移
+
+首次部署、或拉取到含新迁移的代码后，必须在容器内执行迁移：
+
+```bash
+docker compose exec api alembic upgrade head
+```
+
+查看当前迁移版本：
+
+```bash
+docker compose exec api alembic current
+# 3d2cb6bc4b94 (head)
+```
+
+> ⚠️ **不要在开发库上执行 `alembic downgrade`**——它会 DROP 表，且不保留数据。
+> 需要验证迁移可逆性时，切到测试库 `knowledge_test` 再跑（CI 里已经自动做这件事）。
+
 ## 测试
 
 测试使用**独立的数据库** `knowledge_test`，每个测试跑在一个事务里并回滚，不会污染开发数据。
