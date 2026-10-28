@@ -5,20 +5,49 @@ description = "FastAPI backend for an AI-assisted personal knowledge base"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "alembic>=1.20.0",
+    "asyncpg>=0.32.0",
     "fastapi>=0.146.0",
+    "pydantic-settings>=2.16.0",
+    "pymupdf>=2.0",
+    "python-multipart>=0.0.32",
+    "sqlalchemy[asyncio]>=2.1.5",
     "uvicorn[standard]>=0.54.0",
 ]
 
 [tool.pytest.ini_options]
+asyncio_mode = "auto"
 pythonpath = ["."]
 testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
+# Alembic 生成的迁移文件不参与风格检查
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort（import 排序）
+    "UP",  # pyupgrade（用现代语法）
+    "B",   # flake8-bugbear（常见陷阱）
+    "RUF", # ruff 自有规则
+]
+
+ignore = [
+    # These rules look for homoglyph attacks (e.g. Cyrillic 'а' pretending to be Latin 'a').
+    # Comments and docstrings in this project are Chinese, so fullwidth punctuation
+    # (，：；（）) is correct writing, not a security concern.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+]
 
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
     "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
     "ruff>=0.17.1",
 ]

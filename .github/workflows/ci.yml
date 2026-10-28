@@ -10,9 +10,33 @@ jobs:
   backend:
     name: Lint & Test
     runs-on: ubuntu-latest
+
+    # GitHub 会在 job 启动时先拉起这些容器，并用 healthcheck 等它们就绪
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: knowledge
+          POSTGRES_PASSWORD: knowledge
+          POSTGRES_DB: knowledge_test
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U knowledge"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    # 供 settings 读取；CI 里的密码是临时的，不是真实密钥
+    env:
+      POSTGRES_USER: knowledge
+      POSTGRES_PASSWORD: knowledge
+      POSTGRES_DB: knowledge_test
+
     defaults:
       run:
         working-directory: backend
+
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -27,6 +51,11 @@ jobs:
 
       - name: Lint
         run: uv run ruff check .
+
+      - name: Check migrations apply and roll back cleanly
+        run: |
+          uv run alembic upgrade head
+          uv run alembic downgrade base
 
       - name: Test
         run: uv run python -m pytest -q
