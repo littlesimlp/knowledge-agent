@@ -190,3 +190,68 @@ async def test_delete_pasted_source_does_not_touch_files(
     assert (await session.execute(select(KnowledgeSource))).scalars().all() == []
     # 从未上传过文件，uploads 目录不该被创建
     assert not (tmp_path / "uploads").exists()
+
+async def test_create_entry_with_keywords(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/entries",
+        json={
+            "title": "带关键词的条目",
+            "content": "正文",
+            "keywords": ["docker", "volume"],
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["keywords"] == ["docker", "volume"]
+
+
+async def test_keywords_are_normalized(client: AsyncClient) -> None:
+    """去空白、去重、限量——模型给的建议常常不干净。"""
+    response = await client.post(
+        "/api/entries",
+        json={
+            "title": "关键词规范化",
+            "content": "正文",
+            "keywords": [
+                "  docker  ",  # 前后有空白，应被去掉
+                "docker",  # 与上一条重复，应被去掉
+                "",  # 空字符串，应被去掉
+                "volume",
+                "k3",
+                "k4",
+                "k5",
+                "k6",
+                "k7",
+                "k8",
+                "k9",  # 超过 8 个上限，应被截断
+            ],
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    keywords = response.json()["keywords"]
+    assert keywords[0] == "docker"       # 去掉了前后空白
+    assert keywords == list(dict.fromkeys(keywords))   # 无重复
+    assert len(keywords) == 8            # 最多 8 个
+
+
+async def test_patch_keywords(client: AsyncClient) -> None:
+    """确认式写入走的就是 PATCH，这里验证关键词能被更新。"""
+    created = (
+        await client.post(
+            "/api/entries",
+            json={"title": "原标题", "content": "正文"},
+        )
+    ).json()
+    assert created["keywords"] is None
+
+    response = await client.patch(
+        f"/api/entries/{created['id']}",
+        json={"keywords": ["建议一", "建议二"], "category": "确认后的分类"},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["keywords"] == ["建议一", "建议二"]
+    assert body["category"] == "确认后的分类"
+    assert body["title"] == "原标题"      # 没传的字段不变

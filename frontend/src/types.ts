@@ -11,6 +11,7 @@ export interface KnowledgeEntry {
   content: string;
   summary: string | null;
   category: string | null;
+  keywords: string[] | null;
   created_at: string;
   updated_at: string;
 }

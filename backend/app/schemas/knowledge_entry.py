@@ -6,8 +6,39 @@
 
 import uuid
 from datetime import datetime
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+
+_KEYWORDS_MAX_ITEMS = 8
+_KEYWORD_MAX_CHARS = 50
+
+
+def _clean_keywords(values: object) -> list[str] | None:
+    """规范化关键词：去空白、去重、限长、限量。
+
+    AI 给的建议不可信，写入前必须收敛到数据库能接受的范围
+    （和 M3-1 里把模型输出清洗一遍是同一个思路）。
+    """
+    if values is None:
+        return None
+    if not isinstance(values, list):
+        return None
+
+    result: list[str] = []
+    for item in values:
+        if not isinstance(item, str):
+            continue
+        cleaned = item.strip()[:_KEYWORD_MAX_CHARS]
+        if cleaned and cleaned not in result:
+            result.append(cleaned)
+        if len(result) >= _KEYWORDS_MAX_ITEMS:
+            break
+    return result
+
+
+# 一处定义、三处复用，避免每个模型各写一遍校验器
+Keywords = Annotated[list[str] | None, BeforeValidator(_clean_keywords)]
 
 
 class KnowledgeEntryCreate(BaseModel):
@@ -17,6 +48,7 @@ class KnowledgeEntryCreate(BaseModel):
     content: str = Field(min_length=1, description="正文")
     summary: str | None = Field(default=None, description="摘要")
     category: str | None = Field(default=None, max_length=100, description="分类")
+    keywords: Keywords = Field(default=None, description="关键词，最多 8 个")
 
 
 class KnowledgeEntryRead(BaseModel):
@@ -30,8 +62,10 @@ class KnowledgeEntryRead(BaseModel):
     content: str
     summary: str | None
     category: str | None
+    keywords: list[str] | None
     created_at: datetime
     updated_at: datetime
+
 
 class KnowledgeEntryUpdate(BaseModel):
     """更新知识条目的请求体。
@@ -44,3 +78,4 @@ class KnowledgeEntryUpdate(BaseModel):
     content: str | None = Field(default=None, min_length=1)
     summary: str | None = None
     category: str | None = Field(default=None, max_length=100)
+    keywords: Keywords = Field(default=None, description="关键词，最多 8 个")
