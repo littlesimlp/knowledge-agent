@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import LLMDep, suggest_with_error_mapping
 from app.db.session import get_session
 from app.models.knowledge_entry import DEFAULT_WORKSPACE_ID, KnowledgeEntry
 from app.schemas.knowledge_entry import (
@@ -14,6 +15,7 @@ from app.schemas.knowledge_entry import (
     KnowledgeEntryRead,
     KnowledgeEntryUpdate,
 )
+from app.schemas.suggestions import SuggestionResponse
 from app.services.entries import delete_entry_cascade, remove_files
 
 router = APIRouter(prefix="/api/entries", tags=["entries"])
@@ -122,3 +124,28 @@ async def delete_entry(entry_id: uuid.UUID, session: SessionDep) -> None:
 
     # 事务已提交，现在可以安全删文件（失败只记日志）
     remove_files(orphan_files)
+
+@router.post(
+    "/{entry_id}/suggestions",
+    response_model=SuggestionResponse,
+    summary="为已有条目生成整理建议（不落库）",
+)
+async def suggest_for_entry(
+    entry_id: uuid.UUID,
+    session: SessionDep,
+    llm: LLMDep,
+) -> SuggestionResponse:
+    """读取条目正文，让模型给出标题/摘要/关键词/分类建议。
+
+    只返回建议、不修改条目——用户确认后由调用方走 PATCH（业务规则 1）。
+    """
+    entry = await _get_entry_or_404(entry_id, session)
+
+    text = (entry.content or "").strip()
+    if not text:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="这条条目没有正文，无法生成建议",
+        )
+
+    return await suggest_with_error_mapping(llm, text)
