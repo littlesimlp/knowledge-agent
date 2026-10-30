@@ -7,12 +7,15 @@ from app.schemas.knowledge_entry import (
     KnowledgeEntryUpdate,
 )
 from app.schemas.knowledge_source import KnowledgeSourceRead
+from app.schemas.suggestions import SuggestionRequest, SuggestionResponse
 
 __all__ = [
     "KnowledgeEntryCreate",
     "KnowledgeEntryRead",
     "KnowledgeEntryUpdate",
     "KnowledgeSourceRead",
+    "SuggestionRequest",
+    "SuggestionResponse",
     "TextImportRequest",
     "TextImportResult",
 ]
