@@ -14,6 +14,7 @@ from app.schemas.knowledge_entry import (
     KnowledgeEntryRead,
     KnowledgeEntryUpdate,
 )
+from app.services.entries import delete_entry_cascade, remove_files
 
 router = APIRouter(prefix="/api/entries", tags=["entries"])
 
@@ -113,6 +114,11 @@ async def update_entry(
     summary="删除知识条目",
 )
 async def delete_entry(entry_id: uuid.UUID, session: SessionDep) -> None:
+    """删除条目，并连带删除无其它条目引用的来源及其磁盘文件（D-020）。"""
     entry = await _get_entry_or_404(entry_id, session)
-    await session.delete(entry)
-    await session.commit()
+
+    # service 内部完成数据库事务；返回需要在提交后删除的文件
+    orphan_files = await delete_entry_cascade(session, entry)
+
+    # 事务已提交，现在可以安全删文件（失败只记日志）
+    remove_files(orphan_files)

@@ -1,10 +1,15 @@
 """知识条目接口测试。"""
 
 import uuid
+from pathlib import Path
 
 from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.knowledge_entry import DEFAULT_WORKSPACE_ID
+from app.core.config import settings
+from app.models.knowledge_entry import DEFAULT_WORKSPACE_ID, KnowledgeEntry
+from app.models.knowledge_source import KnowledgeEntrySource, KnowledgeSource
 
 
 async def test_create_entry(client: AsyncClient) -> None:
@@ -97,3 +102,91 @@ async def test_tests_are_isolated(client: AsyncClient) -> None:
     """
     response = await client.get("/api/entries")
     assert response.json() == []
+
+async def test_delete_entry_removes_orphan_source_and_file(
+    client: AsyncClient,
+    session: AsyncSession,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """删条目后，来源记录和磁盘文件都应消失（D-020）。"""
+    monkeypatch.setattr(settings, "data_dir", tmp_path)
+
+    created = (
+        await client.post(
+            "/api/imports/file",
+            files={"file": ("note.md", b"# title\n\nbody content", "text/markdown")},
+            data={"title": "要被删除的条目"},
+        )
+    ).json()
+
+    uploads = tmp_path / "uploads"
+    assert len(list(uploads.iterdir())) == 1
+
+    response = await client.delete(f"/api/entries/{created['entry']['id']}")
+
+    assert response.status_code == 204
+    # 来源记录没了
+    assert (await session.execute(select(KnowledgeSource))).scalars().all() == []
+    # 磁盘文件也没了
+    assert list(uploads.iterdir()) == []
+
+
+async def test_shared_source_is_not_deleted(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    """两个条目共享一个来源时，删其中一个不能删掉来源。"""
+    source = KnowledgeSource(
+        workspace_id=DEFAULT_WORKSPACE_ID,
+        source_type="pasted_text",
+        source_name="共享来源",
+        extracted_text="same text",
+    )
+    entry_a = KnowledgeEntry(
+        workspace_id=DEFAULT_WORKSPACE_ID, title="条目 A", content="a"
+    )
+    entry_b = KnowledgeEntry(
+        workspace_id=DEFAULT_WORKSPACE_ID, title="条目 B", content="b"
+    )
+    session.add_all([source, entry_a, entry_b])
+    await session.flush()
+    session.add_all(
+        [
+            KnowledgeEntrySource(entry_id=entry_a.id, source_id=source.id),
+            KnowledgeEntrySource(entry_id=entry_b.id, source_id=source.id),
+        ]
+    )
+    await session.commit()
+
+    response = await client.delete(f"/api/entries/{entry_a.id}")
+
+    assert response.status_code == 204
+    # B 还引用着它，来源必须保留
+    remaining = (await session.execute(select(KnowledgeSource))).scalars().all()
+    assert len(remaining) == 1
+    assert remaining[0].id == source.id
+
+
+async def test_delete_pasted_source_does_not_touch_files(
+    client: AsyncClient,
+    session: AsyncSession,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """粘贴文本类型的来源没有 file_path，删除时不能去动磁盘。"""
+    monkeypatch.setattr(settings, "data_dir", tmp_path)
+
+    created = (
+        await client.post(
+            "/api/imports/text",
+            json={"text": "一段粘贴的文本", "title": "粘贴的条目"},
+        )
+    ).json()
+
+    response = await client.delete(f"/api/entries/{created['entry']['id']}")
+
+    assert response.status_code == 204
+    assert (await session.execute(select(KnowledgeSource))).scalars().all() == []
+    # 从未上传过文件，uploads 目录不该被创建
+    assert not (tmp_path / "uploads").exists()
