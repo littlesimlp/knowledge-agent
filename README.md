@@ -141,6 +141,20 @@ docker compose exec api alembic current
 > ⚠️ **不要在开发库上执行 `alembic downgrade`**——它会 DROP 表，且不保留数据。
 > 需要验证迁移可逆性时，切到测试库 `knowledge_test` 再跑（CI 里已经自动做这件事）。
 
+## 前端（开发中）
+
+当前是只读界面：条目列表 + 详情 + AI 建议预览。上传和"确认写入"在 M3-5 实现。
+
+```bash
+# 终端 1：后端（开发模式用本地 uvicorn，改代码自动重启）
+docker compose stop api
+cd backend && uv run uvicorn app.main:app --reload --port 8000
+
+# 终端 2：前端
+cd frontend
+pnpm install
+pnpm dev            # http://127.0.0.1:5173
+
 ## 测试
 
 测试使用**独立的数据库** `knowledge_test`，每个测试跑在一个事务里并回滚，不会污染开发数据。
