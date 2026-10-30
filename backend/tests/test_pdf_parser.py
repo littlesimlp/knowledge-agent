@@ -72,3 +72,35 @@ def test_parse_file_dispatches_pdf(tmp_path: Path) -> None:
     result = parse_file(path)
 
     assert result.status is ParseStatus.OK
+
+def _make_pdf_with_noise(path: Path, *, pages: int = 3) -> Path:
+    """生成带页眉和页码的 PDF，用来验证噪音过滤。
+
+    注意：页眉和页码要放在不同的 y 坐标，
+    否则 PyMuPDF 会把它们合并成同一行文字。
+    """
+    doc = pymupdf.open()
+    for index in range(1, pages + 1):
+        page = doc.new_page()
+        page.insert_text((72, 60), "RUNNING HEADER OF THE DOCUMENT")   # 页眉
+        page.insert_text((300, 780), str(index))                       # 页码（页脚位置）
+        for line in range(1, 6):
+            page.insert_text(
+                (72, 118 + line * 18),
+                f"body content of page {index} line {line}",
+            )
+    doc.save(path)
+    doc.close()
+    return path
+
+
+def test_pdf_noise_is_filtered(tmp_path: Path) -> None:
+    """页眉和页码必须被去掉，正文必须完整保留。"""
+    path = _make_pdf_with_noise(tmp_path / "noisy.pdf", pages=3)
+
+    result = parse_file(path)
+
+    assert result.status is ParseStatus.OK
+    assert "RUNNING HEADER OF THE DOCUMENT" not in result.text
+    assert "body content of page 1 line 1" in result.text
+    assert "body content of page 3 line 5" in result.text

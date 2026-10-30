@@ -9,6 +9,7 @@ from pathlib import Path
 import pymupdf
 
 from app.parsers.base import ParseResult, ParseStatus
+from app.parsers.cleanup import clean_pages
 
 PDF_SUFFIXES = frozenset({".pdf"})
 
@@ -39,6 +40,11 @@ def parse_pdf(path: Path) -> ParseResult:
         pages = tuple(page.get_text() for page in doc)
     finally:
         doc.close()
+
+    # D-016：先去掉页眉/页脚/页码，再做"是否为扫描件"的判定
+    pages = clean_pages(pages)
+
+    total_chars = sum(len(p.strip()) for p in pages)
 
     total_chars = sum(len(p.strip()) for p in pages)
     chars_per_page = total_chars / page_count
