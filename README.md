@@ -10,8 +10,8 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.146-009688)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)
 
-**当前状态：M0 / M1 已完成，M2 的文本导入链路（M2-1 ~ M2-4）已可实际使用——可以用一条命令把
-`.md` / `.txt` 笔记存进知识库。下一步 M2-5：PDF 解析。**
+**当前状态：M0 / M1 / M2 全部完成——可以导入 `.md` / `.txt` / `.pdf`，PDF 会自动清理页眉和页码。
+下一步 M3：AI 整理建议 + 前端界面。**
 进度、已知的坑与决策详见 [`docs/handoff/00-project-state.md`](docs/handoff/00-project-state.md)。
 
 ---
@@ -156,7 +156,7 @@ docker compose exec -T db psql -U knowledge -d knowledge -c "create database kno
 ```bash
 cd backend
 uv run python -m pytest -q
-# 28 passed
+# 42 passed
 ```
 
 测试用 `httpx.AsyncClient` + `ASGITransport` 在进程内直连 ASGI 应用，**不启动真实服务、不占端口**。
@@ -194,7 +194,12 @@ curl -X POST http://127.0.0.1:8000/api/imports/file \
 这是防止路径穿越的必要措施。
 
 支持的类型：`.txt` / `.md` / `.markdown` / `.pdf`，单文件默认上限 5 MB。
-PDF 若没有文字层（扫描件），会返回 422 并说明需要 OCR——当前版本不支持 OCR。
+
+PDF 的两个特殊处理：
+
+- **扫描件检测**：没有文字层（平均每页少于 25 字符）会返回 422 并说明需要 OCR——当前不支持 OCR
+- **噪音清理**：自动删除每页重复的页眉/页脚和在 60% 以上页面出现的短行，以及纯数字页码
+  （保守策略：宁可留下噪音，也不误删正文）
 
 > 创建示例（不使用导入接口时）：
 
