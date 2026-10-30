@@ -34,6 +34,18 @@ class Settings(BaseSettings):
     # 单文件大小上限，默认 5 MB
     max_upload_bytes: int = 5 * 1024 * 1024
 
+    # ---- LLM（M3）----
+    # fake = 不联网，返回固定建议；适合本地开发和 CI
+    llm_provider: str = "fake"
+    llm_api_key: str = ""
+    # 留空则按 provider 用默认地址
+    llm_base_url: str = ""
+    # 必须显式指定（不同平台的模型名不同，且会变），不设默认值
+    llm_model: str = ""
+    llm_timeout_seconds: float = 30.0
+    # 送给模型的文本上限：整份 300 页 PDF 不可能塞进上下文
+    llm_max_input_chars: int = 8000
+
     db_host: str = "127.0.0.1"
     db_port: int = 5432
     db_name: str = Field(
