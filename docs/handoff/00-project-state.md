@@ -5,8 +5,8 @@
 >
 > **维护规则**：每完成一个里程碑更新一次。只写结论和现状，不写过程流水账。
 
-- 最后更新：2026-10-22
-- 当前里程碑：**M2-1 ~ M2-4 已完成**（文本导入链路已可用），下一步 M2-5（PDF 解析）
+- 最后更新：2026-10-28
+- 当前里程碑：**M2 已完成**（文本/PDF 导入 + 噪音过滤），下一步 M3（AI 整理建议 + 前端）
 - 维护人：项目作者本人
 
 ---
@@ -182,22 +182,25 @@ D:\personal-agent\
 
 ## 7. 未完成 / 下一步
 
-### M2（当前目标）：文件解析与来源
+### M2（已完成）：文件解析与来源
 
 **实施顺序在 M2-2 时调整过（D-019）：先文本、后 PDF**，理由是"最小可用优先"——
 真实使用后发现 JSON 接口无法导入多行文本，进一步印证了这个顺序。
 
 | 步骤 | 内容 | 状态 |
 |---|---|---|
-| M2-1 | `KnowledgeSource` + `KnowledgeEntrySource` + 迁移 | ✅ 已完成（PR #2） |
-| M2-2 | 解析器基础设施 + TXT/Markdown 解析 + 10 个测试 | ✅ 已完成（PR #3） |
-| M2-3 | `POST /api/imports/text`：文本 → 来源 + 条目 + 关联 | ✅ 已完成（PR #4） |
-| M2-4 | 文件上传（multipart）+ 落盘 + 复用解析器 + 抽 service 层 | ✅ 已完成（PR #5） |
-| M2-5 | PDF 解析（PyMuPDF）**+ 扫描件检测（D-018：平均每页 < 25 字符 → EMPTY）** | ⬜ 下一步 |
-| M2-6 | 页眉/页脚/页码噪音过滤（D-016） | ⬜ |
+| M2-1 | `KnowledgeSource` + `KnowledgeEntrySource` + 迁移 | ✅ PR #2 |
+| M2-2 | 解析器基础设施 + TXT/Markdown 解析 + 10 个测试 | ✅ PR #3 |
+| M2-3 | `POST /api/imports/text`：文本 → 来源 + 条目 + 关联 | ✅ PR #4 |
+| M2-4 | 文件上传（multipart）+ 落盘 + 复用解析器 + 抽 service 层 | ✅ PR #5 |
+| M2-5 | PDF 解析（PyMuPDF AGPL）+ 扫描件检测（D-018：平均每页 < 25 字符 → EMPTY） | ✅ PR #8 |
+| M2-6 | 页眉/页脚/页码噪音过滤（D-016：跨页重复短行 + 纯数字短行） | ✅ PR #11 |
 
-**M2 真正的交付线已达到**：可以用一条命令把 `.md`/`.txt` 笔记存进知识库，
-原文完整保存在 `knowledge_sources.extracted_text`，文件落在 `backend/data/uploads/`（git 已忽略）。
+**当前能力**：一条命令把 `.md` / `.txt` / `.pdf` 存进知识库，原文完整保存进
+`knowledge_sources.extracted_text`，文件落在 `backend/data/uploads/`（git 已忽略）。
+PDF 会自动清掉每页重复的页眉和页码（真实样本实测：4772 → 4635 字符，每页精确删 2 行、零误删）。
+
+**测试规模**：42 passed。
 
 ### 之后
 
@@ -205,6 +208,8 @@ D:\personal-agent\
   （现在只有 API，没有界面；实际使用后已明确感受到"手工 curl 太别扭"）
 - **M4**：基础 RAG（PG 全文检索 → 交给模型 → 回答带真实条目与来源引用）
 - **M5**：备份恢复演练 + 真实部署给自己用
+
+**进 M3 前必须先拍板的**：D-020（删除条目后来源与磁盘文件的处理方式）。
 
 ---
 
@@ -253,6 +258,12 @@ D:\personal-agent\
 | **Alembic autogenerate 会删表** | 库里手工建的表被当成"已删除"，生成 `drop_table` | **迁移文件必须人工 review**；开发库临时表先清掉 |
 | **`alembic downgrade` 很危险** | 会 DROP 表，结构回滚但数据不保留 | 本地只用 `upgrade head`；验证可逆性切到 `knowledge_test` 再跑 |
 | VS Code 新建文件落错目录 | `ModuleNotFoundError`（文件在 `app/` 而非 `app/models/`） | **先用 `New-Item -Path 完整路径` 建空文件**；或新建前先选中目标文件夹 |
+| **`git checkout -b X` 分支已存在时静默失败** | 报 `already exists` 但人仍停原分支，提交全落到 main | 建分支后**立刻** `git branch --show-current` 确认；或改用 `git switch -c` |
+| **squash 合并后 `git branch -d` 失效** | 原始提交不是 main 的祖先，`-d` 拒绝删除 | 确认 PR 已 merged 后，用 `git branch -D` 强删 |
+| **PR 标题就是最终提交信息** | squash 后用分支名当标题，main 上出现 `Docs/m2 progress` 这种不合格提交 | PR 标题必须写 Conventional Commits 格式 |
+| **中文路径通过管道传给 Python 会丢** | `$code \| uv run python -` 里写中文路径 → `FileNotFoundError: 'F:\??\???...'` | 脚本体保持纯 ASCII，中文路径走环境变量（`os.environ["PDF_PATH"]`） |
+| **测试夹具不真实导致误判** | 合成 PDF 每页只 15 字符，被 D-018 的 25 阈值判成扫描件 | **修夹具，不要降阈值**——为让测试通过而削弱生产逻辑是最坏方向 |
+| `curl.exe` 对某些站点 TLS 失败 | `schannel: failed to receive handshake`（gnu.org 等） | 换 Node / Python 或用代理；**这不是网络封锁，别浪费时间调配置** |
 
 其他约定：
 
