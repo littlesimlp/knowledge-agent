@@ -148,3 +148,101 @@ body {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ---- 上传入口 ---- */
+.upload {
+  display: block;
+  margin-top: 12px;
+  padding: 8px 12px;
+  border: 1px dashed #888;
+  border-radius: 6px;
+  font-size: 14px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.upload.busy {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.upload input {
+  display: none;
+}
+
+.hint {
+  margin: 4px 0 0;
+  color: #888;
+  font-size: 12px;
+}
+
+/* ---- 提示条 ---- */
+.notice {
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: rgba(60, 160, 90, 0.15);
+  color: #2a7a45;
+  font-size: 14px;
+}
+
+/* ---- 确认表单 ---- */
+.draft {
+  margin: 16px 0;
+  padding: 16px;
+  border: 1px solid #d0d0d0;
+  border-radius: 8px;
+}
+
+.draft h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.field {
+  display: block;
+  margin: 12px 0;
+}
+
+.field > span {
+  display: block;
+  margin-bottom: 4px;
+  color: #666;
+  font-size: 13px;
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #bbb;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+
+.field input:focus,
+.field textarea:focus {
+  outline: 2px solid rgba(80, 130, 255, 0.4);
+  border-color: rgba(80, 130, 255, 0.8);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.detail button.secondary {
+  border-color: #bbb;
+  color: #888;
+}
+
+.detail h3 {
+  margin: 20px 0 0;
+  font-size: 15px;
+}
