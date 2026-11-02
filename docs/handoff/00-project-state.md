@@ -5,8 +5,8 @@
 >
 > **维护规则**：每完成一个里程碑更新一次。只写结论和现状，不写过程流水账。
 
-- 最后更新：2026-10-30
-- 当前里程碑：**M3 已完成**（AI 建议 + 前端可上传/编辑/确认保存），下一步 **M4（基础 RAG）**
+- 最后更新：2026-11-02
+- 当前里程碑：**M3 已完成并合并**（PR #21；AI 建议 + 前端可上传/编辑/确认保存），下一步 **M4（基础 RAG）**
 - 配套文档：`01-decisions.md`（24 条决策）、`02-env-notes.md`（环境差异）、**`03-issue-log.md`（问题全记录）**
 - 维护人：项目作者本人
 
@@ -45,12 +45,12 @@
 | 数据库 | **PostgreSQL 16-alpine**（Docker） | ✅ |
 | ORM | **SQLAlchemy 2.1（async + asyncpg）** | ✅ |
 | 迁移 | **Alembic**（`-t async` 模板） | ✅ |
-| 测试 | **pytest + pytest-asyncio + httpx** | ✅ 7 个测试 |
+| 测试 | **pytest + pytest-asyncio + httpx** | ✅ 70 个测试 |
 | Lint | **ruff**（显式规则集，见 D-013） | ✅ |
 | CI | **GitHub Actions**（Lint & Test + Docker build） | ✅ |
 | 容器 | Docker Compose | ✅ |
-| 文件解析 | PyMuPDF / Markdown / TXT | ⬜ M2 引入 |
-| 前端 | React + TypeScript + Vite | ⬜ M3 之后 |
+| 文件解析 | PyMuPDF / Markdown / TXT | ✅ M2 已引入 |
+| 前端 | React 19 + TypeScript + Vite | ✅ M3 已引入 |
 | 架构 | **模块化单体**，不用微服务 |  |
 
 ---
@@ -255,7 +255,7 @@ D:\personal-agent\
 
 PDF 实测：4772 → 4635 字符，每页精确删 2 行（页眉 + 页码），正文零误删。
 
-### M3（进行中）：AI 整理建议 + 前端
+### M3（已完成）：AI 整理建议 + 前端
 
 | 步骤 | 内容 | 状态 |
 |---|---|---|
@@ -289,7 +289,10 @@ PDF 实测：4772 → 4635 字符，每页精确删 2 行（页眉 + 页码）�
   2. `POST /api/ask`：问题 → 检索相关条目 → 交给模型 → 回答**必须带条目引用**
   3. 前端加一个"提问"界面
 - **M5**：备份恢复演练 + 真实部署给自己用
-- 待补：前端纳入 CI（`pnpm lint && pnpm build` 目前只在本地跑）
+- 待补：
+  - 前端纳入 CI（`pnpm lint && pnpm build` 目前只在本地跑）
+  - 前端删除按钮 + 二次确认（D-020 的缓解手段，M3 未实现）
+  - "查看来源全文"入口（D-016 遗留待定项）
 
 **测试规模**：后端 70 passed（8 个文件）；前端 lint 0 warnings、build 通过
 
@@ -478,7 +481,7 @@ $runs.workflow_runs[0] | Select-Object name, head_sha, status, conclusion
 >
 > **当前进度**：M0 工程骨架 / M1 条目 CRUD / M2 文件解析（txt+md+pdf+噪音过滤+连带删除）/
 > **M3 AI 建议 + 完整前端（上传、可编辑确认表单、保存）——全部完成并已合并**
-> （PR #1 ~ #20，后端 70 个测试，CI 全绿）。
+> （PR #1 ~ #21，后端 70 个测试，CI 全绿）。
 >
 > **下一步是 M4（基础 RAG）**：PG 全文检索 + `keywords` 精确过滤 → 交给模型 →
 > 回答必须带真实条目与来源引用。前端要加一个"提问"界面。

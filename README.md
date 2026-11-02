@@ -10,8 +10,8 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.146-009688)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)
 
-**当前状态：M0 / M1 / M2 全部完成——可以导入 `.md` / `.txt` / `.pdf`，PDF 会自动清理页眉和页码。
-下一步 M3：AI 整理建议 + 前端界面。**
+**当前状态：M0–M3 全部完成——`.md` / `.txt` / `.pdf` 导入（PDF 自动清理页眉和页码）、
+AI 整理建议、前端确认式写入已端到端跑通。下一步 M4：基础 RAG（全文检索 + 带来源引用的问答）。**
 进度、已知的坑与决策详见 [`docs/handoff/00-project-state.md`](docs/handoff/00-project-state.md)。
 
 ---
@@ -42,8 +42,8 @@
 | 测试 | pytest + pytest-asyncio + httpx | ✅ 已使用 |
 | Lint | ruff（显式规则集） | ✅ 已使用 |
 | CI | GitHub Actions（含真实 PostgreSQL） | ✅ 已使用 |
-| 文件解析 | PyMuPDF、Markdown/TXT 解析 | ⬜ M2 引入 |
-| 前端 | React + TypeScript + Vite | ⬜ M3 之后引入 |
+| 文件解析 | PyMuPDF、Markdown/TXT 解析 | ✅ 已使用 |
+| 前端 | React 19 + TypeScript + Vite（Oxlint） | ✅ 已使用 |
 
 架构为**模块化单体**，不采用微服务。所有数据库访问都是异步的。
 
@@ -141,9 +141,10 @@ docker compose exec api alembic current
 > ⚠️ **不要在开发库上执行 `alembic downgrade`**——它会 DROP 表，且不保留数据。
 > 需要验证迁移可逆性时，切到测试库 `knowledge_test` 再跑（CI 里已经自动做这件事）。
 
-## 前端（开发中）
+## 前端
 
-当前是只读界面：条目列表 + 详情 + AI 建议预览。上传和"确认写入"在 M3-5 实现。
+界面已覆盖完整闭环：导入文件 → 列表/详情 → 让 AI 生成整理建议 → 手动编辑 → 确认保存（PATCH）。
+AI 只填充草稿，用户点保存才写库。
 
 ```bash
 # 终端 1：后端（开发模式用本地 uvicorn，改代码自动重启）
@@ -154,6 +155,7 @@ cd backend && uv run uvicorn app.main:app --reload --port 8000
 cd frontend
 pnpm install
 pnpm dev            # http://127.0.0.1:5173
+```
 
 ## 测试
 
@@ -170,7 +172,7 @@ docker compose exec -T db psql -U knowledge -d knowledge -c "create database kno
 ```bash
 cd backend
 uv run python -m pytest -q
-# 42 passed
+# 70 passed
 ```
 
 测试用 `httpx.AsyncClient` + `ASGITransport` 在进程内直连 ASGI 应用，**不启动真实服务、不占端口**。
@@ -187,6 +189,8 @@ uv run python -m pytest -q
 | DELETE | `/api/entries/{id}` | 204 / 404 | 删除 |
 | POST | `/api/imports/text` | 201 / 422 | 导入粘贴文本（JSON） |
 | POST | `/api/imports/file` | 201 / 413 / 415 / 422 | 导入文本文件（multipart） |
+| POST | `/api/suggestions` | 200 / 422 / 503 | 对一段纯文本求 AI 整理建议（**不落库**） |
+| POST | `/api/entries/{id}/suggestions` | 200 / 404 / 422 / 503 | 对已有条目求建议（**不落库**） |
 
 ### 导入一篇笔记（推荐方式）
 
@@ -214,6 +218,19 @@ PDF 的两个特殊处理：
 - **扫描件检测**：没有文字层（平均每页少于 25 字符）会返回 422 并说明需要 OCR——当前不支持 OCR
 - **噪音清理**：自动删除每页重复的页眉/页脚和在 60% 以上页面出现的短行，以及纯数字页码
   （保守策略：宁可留下噪音，也不误删正文）
+
+### 让 AI 给出整理建议
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/entries/<id>/suggestions
+```
+
+返回标题 / 摘要 / 分类 / 关键词建议，**不会修改条目**。前端把建议填进可编辑草稿，
+用户点「保存」才走 `PATCH /api/entries/<id>`。
+
+- `422`：条目正文为空白，不浪费模型调用
+- `503`：模型不可用（未配 key、超时、返回不可解析）——调用方应**降级为手动填写**，不要阻塞用户
+- 默认 `LLM_PROVIDER=fake`，返回固定建议、不联网；接真实模型见下方「环境变量」
 
 > 创建示例（不使用导入接口时）：
 
@@ -243,6 +260,12 @@ knowledge-agent/
 │   ├── 02-design.md              # 技术设计与实施基线
 │   ├── handoff/                  # 项目状态、决策记录（新人先读这个）
 │   └── journal/                  # 作者学习心得（内容不进库）
+├── frontend/                     # React 19 + TS + Vite（M3）
+│   ├── vite.config.ts            # host 127.0.0.1 + /api 代理到 8000
+│   └── src/
+│       ├── App.tsx               # 列表 + 详情 + 建议表单 + 上传
+│       ├── api.ts                # 只写相对路径的 fetch 封装
+│       └── types.ts              # 与后端 schema 手工对齐
 └── backend/
     ├── Dockerfile
     ├── pyproject.toml
@@ -250,15 +273,15 @@ knowledge-agent/
     ├── alembic/                  # 迁移脚本（versions/ 下为生成物）
     ├── app/
     │   ├── main.py               # 应用入口
-    │   ├── core/config.py        # 配置（环境变量 / .env）
+    │   ├── core/config.py        # 配置（DB_* / LLM_*）
     │   ├── db/                   # 引擎、session、Base
     │   ├── models/               # ORM 模型
     │   ├── schemas/              # 请求/响应契约
-    │   ├── parsers/              # 文件解析（按后缀分发，PDF 在 M2-5 加入）
-    │   ├── services/             # 业务服务（导入编排、文件落盘）
-    │   └── api/routes/           # 路由
+    │   ├── parsers/              # txt / md / pdf 解析 + 页眉页码清理
+    │   ├── services/             # 业务服务（导入、连带删除、落盘、llm/ 适配层）
+    │   └── api/routes/           # entries / imports / suggestions
     ├── data/                     # 上传文件落盘（已 gitignore）
-    └── tests/                    # pytest（独立测试库 + 事务回滚）
+    └── tests/                    # 70 个 pytest（独立测试库 + 事务回滚）
 ```
 
 ## 环境变量
@@ -270,6 +293,12 @@ knowledge-agent/
 | `POSTGRES_USER` | 数据库用户名 |
 | `POSTGRES_PASSWORD` | 数据库密码（本地开发用，不要复用真实密码） |
 | `POSTGRES_DB` | 数据库名 |
+| `LLM_PROVIDER` | `fake`（默认，不联网）/ `deepseek` / `siliconflow` |
+| `LLM_API_KEY` | 真实 key，只放 `.env`，不进库 |
+| `LLM_BASE_URL` | 留空则用 provider 默认地址 |
+| `LLM_MODEL` | 必须显式填（如 `deepseek-chat`），不设默认值 |
+| `LLM_TIMEOUT_SECONDS` | 模型调用超时，默认 30 秒 |
+| `LLM_MAX_INPUT_CHARS` | 送给模型的正文上限，默认 8000 字符 |
 
 应用侧的连接参数（`DB_HOST` 等）默认值为本机 `127.0.0.1:5432`；在 Docker Compose 里会被覆盖成服务名 `db`。
 所以同一份配置既能在容器里跑、也能在宿主机跑。
@@ -370,9 +399,9 @@ chore(deps): bump fastapi to 0.147
 |---|---|---|
 | M0 | 工程骨架：仓库、FastAPI、PostgreSQL、Docker、CI | ✅ 完成 |
 | M1 | 知识条目 CRUD：SQLAlchemy 模型、Alembic 迁移、REST 接口、独立测试库 | ✅ 完成 |
-| M2 | 文件解析（PDF / Markdown / TXT）+ 来源记录 | 🔜 进行中 |
-| M3 | AI 整理建议（标题/摘要/关键词/分类）+ 确认式写入 | ⬜ |
-| M4 | 基础 RAG 问答（PostgreSQL 全文检索 + 来源引用） | ⬜ |
+| M2 | 文件解析（PDF / Markdown / TXT）+ 来源记录 | ✅ 完成 |
+| M3 | AI 整理建议（标题/摘要/关键词/分类）+ 前端确认式写入 | ✅ 完成 |
+| M4 | 基础 RAG 问答（PostgreSQL 全文检索 + 来源引用） | ⬜ 下一步 |
 | M5 | 备份恢复演练 + 真实部署 | ⬜ |
 
 ## License
