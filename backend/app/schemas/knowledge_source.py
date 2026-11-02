@@ -1,8 +1,8 @@
 """知识来源的响应契约。
 
-注意：**故意不暴露 extracted_text**。
-原文可能有几百 KB，放进每次响应里会让响应体爆炸；
-需要看全文时用单独的详情接口（M3 再提供）。
+列表响应**故意不暴露 extracted_text**：原文可能有几百 KB，
+放进每次响应里会让响应体爆炸。需要全文时走
+`GET /api/sources/{source_id}` 的详情接口。
 """
 
 import uuid
@@ -24,3 +24,9 @@ class KnowledgeSourceRead(BaseModel):
     file_path: str | None
     source_excerpt: str | None
     created_at: datetime
+
+
+class KnowledgeSourceDetail(KnowledgeSourceRead):
+    """来源详情：列表字段 + 完整原文（`extracted_text`）。"""
+
+    extracted_text: str | None
