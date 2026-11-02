@@ -2,6 +2,8 @@ import type {
   EntryPatch,
   ImportResult,
   KnowledgeEntry,
+  KnowledgeSource,
+  KnowledgeSourceDetail,
   Suggestion,
 } from "./types";
 
@@ -56,6 +58,14 @@ export const api = {
 
   deleteEntry: (id: string) =>
     request<void>(`/api/entries/${id}`, { method: "DELETE" }),
+
+  /** 条目关联的来源元数据（不含全文，避免列表响应过大） */
+  listEntrySources: (entryId: string) =>
+    request<KnowledgeSource[]>(`/api/entries/${entryId}/sources`),
+
+  /** 来源详情：只有点"查看原文"时才拉全文 */
+  getSource: (sourceId: string) =>
+    request<KnowledgeSourceDetail>(`/api/sources/${sourceId}`),
 
   /**
    * 上传文件。

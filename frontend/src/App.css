@@ -246,3 +246,98 @@ body {
   margin: 20px 0 0;
   font-size: 15px;
 }
+
+/* ---- 危险操作 ---- */
+.detail button.danger {
+  border-color: rgba(200, 50, 50, 0.7);
+  color: #c33;
+}
+
+.detail button.danger:hover:not(:disabled) {
+  background: rgba(200, 50, 50, 0.12);
+}
+
+/* ---- 来源 ---- */
+.sources ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.sources li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.sources .source-name {
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sources button {
+  margin: 0 0 0 auto;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+/* ---- 原文弹窗 ---- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  width: min(900px, 100%);
+  max-height: 100%;
+  padding: 20px 24px;
+  border-radius: 10px;
+  background: Canvas;
+  color: CanvasText;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.modal-header h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  word-break: break-word;
+}
+
+.modal-header button {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border: 1px solid #888;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.modal-content {
+  flex: 1 1 auto;
+  margin-top: 12px;
+  overflow: auto;
+}

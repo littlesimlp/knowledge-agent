@@ -10,11 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import LLMDep, suggest_with_error_mapping
 from app.db.session import get_session
 from app.models.knowledge_entry import DEFAULT_WORKSPACE_ID, KnowledgeEntry
+from app.models.knowledge_source import KnowledgeEntrySource, KnowledgeSource
 from app.schemas.knowledge_entry import (
     KnowledgeEntryCreate,
     KnowledgeEntryRead,
     KnowledgeEntryUpdate,
 )
+from app.schemas.knowledge_source import KnowledgeSourceRead
 from app.schemas.suggestions import SuggestionResponse
 from app.services.entries import delete_entry_cascade, remove_files
 
@@ -124,6 +126,34 @@ async def delete_entry(entry_id: uuid.UUID, session: SessionDep) -> None:
 
     # 事务已提交，现在可以安全删文件（失败只记日志）
     remove_files(orphan_files)
+
+
+@router.get(
+    "/{entry_id}/sources",
+    response_model=list[KnowledgeSourceRead],
+    summary="列出条目关联的来源",
+)
+async def list_entry_sources(
+    entry_id: uuid.UUID,
+    session: SessionDep,
+) -> list[KnowledgeSource]:
+    """返回这条条目关联的所有来源，**不含全文**。
+
+    先校验条目存在且属于当前空间，避免拿来源列表接口探测条目 id。
+    """
+    await _get_entry_or_404(entry_id, session)
+
+    result = await session.execute(
+        select(KnowledgeSource)
+        .join(
+            KnowledgeEntrySource,
+            KnowledgeEntrySource.source_id == KnowledgeSource.id,
+        )
+        .where(KnowledgeEntrySource.entry_id == entry_id)
+        .order_by(KnowledgeSource.created_at)
+    )
+    return list(result.scalars().all())
+
 
 @router.post(
     "/{entry_id}/suggestions",

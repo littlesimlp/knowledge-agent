@@ -5,8 +5,8 @@
 >
 > **维护规则**：每完成一个里程碑更新一次。只写结论和现状，不写过程流水账。
 
-- 最后更新：2026-10-30
-- 当前里程碑：**M3 已完成**（AI 建议 + 前端可上传/编辑/确认保存），下一步 **M4（基础 RAG）**
+- 最后更新：2026-11-02
+- 当前里程碑：**M3 已完成并合并**（PR #21）；M3-6 收尾（来源原文、删除二次确认、前端 CI）已完成，下一步 **M4（基础 RAG）**
 - 配套文档：`01-decisions.md`（24 条决策）、`02-env-notes.md`（环境差异）、**`03-issue-log.md`（问题全记录）**
 - 维护人：项目作者本人
 
@@ -45,12 +45,12 @@
 | 数据库 | **PostgreSQL 16-alpine**（Docker） | ✅ |
 | ORM | **SQLAlchemy 2.1（async + asyncpg）** | ✅ |
 | 迁移 | **Alembic**（`-t async` 模板） | ✅ |
-| 测试 | **pytest + pytest-asyncio + httpx** | ✅ 7 个测试 |
+| 测试 | **pytest + pytest-asyncio + httpx** | ✅ 76 个测试 |
 | Lint | **ruff**（显式规则集，见 D-013） | ✅ |
-| CI | **GitHub Actions**（Lint & Test + Docker build） | ✅ |
+| CI | **GitHub Actions**（Lint & Test + Docker build + 前端 lint/build） | ✅ |
 | 容器 | Docker Compose | ✅ |
-| 文件解析 | PyMuPDF / Markdown / TXT | ⬜ M2 引入 |
-| 前端 | React + TypeScript + Vite | ⬜ M3 之后 |
+| 文件解析 | PyMuPDF / Markdown / TXT | ✅ M2 已引入 |
+| 前端 | React 19 + TypeScript + Vite | ✅ M3 已引入 |
 | 架构 | **模块化单体**，不用微服务 |  |
 
 ---
@@ -125,8 +125,8 @@ D:\personal-agent\
     │   │       └── __init__.py        # get_llm_provider 工厂
     │   └── api\
     │       ├── deps.py                # LLMDep + suggest_with_error_mapping
-    │       └── routes\                # entries(7) / imports(2) / suggestions(1)
-    └── tests\                         # 70 个测试，8 个文件
+    │       └── routes\                # entries(7) / imports(2) / suggestions(1) / sources(1)
+    └── tests\                         # 76 个测试，9 个文件
         ├── conftest.py                # 测试库 + 事务回滚隔离 + dependency_overrides
         ├── test_health.py             # 2
         ├── test_entries.py            # 12
@@ -135,7 +135,8 @@ D:\personal-agent\
         ├── test_cleanup.py            # 8
         ├── test_pdf_parser.py         # 5
         ├── test_llm.py                # 12
-        └── test_suggestions.py        # 10
+        ├── test_suggestions.py        # 10
+        └── test_sources.py            # 6
 ```
 
 ---
@@ -173,6 +174,8 @@ D:\personal-agent\
 | GET | `/api/entries/{id}` | 200 / 404 | 单条 |
 | PATCH | `/api/entries/{id}` | 200 / 404 | 部分更新（`exclude_unset=True`），确认式写入走它 |
 | DELETE | `/api/entries/{id}` | 204 / 404 | 删除，连带清理孤儿来源与文件（D-020） |
+| GET | `/api/entries/{id}/sources` | 200 / 404 | 关联来源列表，**不含全文** |
+| GET | `/api/sources/{id}` | 200 / 404 | 来源详情，含 `extracted_text`；跨空间一律 404 |
 | POST | `/api/imports/text` | 201 / 422 | 导入粘贴文本（JSON body） |
 | POST | `/api/imports/file` | 201 / 413 / 415 / 422 | 导入文件（multipart），支持 txt/md/pdf |
 | POST | `/api/suggestions` | 200 / 503 | 对**一段纯文本**求 AI 整理建议，**不落库** |
@@ -255,7 +258,7 @@ D:\personal-agent\
 
 PDF 实测：4772 → 4635 字符，每页精确删 2 行（页眉 + 页码），正文零误删。
 
-### M3（进行中）：AI 整理建议 + 前端
+### M3（已完成）：AI 整理建议 + 前端
 
 | 步骤 | 内容 | 状态 |
 |---|---|---|
@@ -265,6 +268,7 @@ PDF 实测：4772 → 4635 字符，每页精确删 2 行（页眉 + 页码）�
 | M3-4 | 前端骨架：列表 + 详情 + 建议预览（Vite 代理，D-023） | ✅ PR #17 |
 | M3-4b | `keywords` 列 + 迁移 + 校验 + 前端类型同步（D-022） | ✅ PR #18 |
 | M3-5 | 前端上传 + 建议可编辑表单 + 确认写入（PATCH） | ✅ PR #20 |
+| M3-6 | 来源原文查看 + 删除二次确认 + 前端纳入 CI | ✅ 已完成 |
 
 **M3 交付的完整闭环（已端到端实测）**：
 
@@ -289,9 +293,9 @@ PDF 实测：4772 → 4635 字符，每页精确删 2 行（页眉 + 页码）�
   2. `POST /api/ask`：问题 → 检索相关条目 → 交给模型 → 回答**必须带条目引用**
   3. 前端加一个"提问"界面
 - **M5**：备份恢复演练 + 真实部署给自己用
-- 待补：前端纳入 CI（`pnpm lint && pnpm build` 目前只在本地跑）
+- 待补：暂无。原三项（前端 CI、删除二次确认、来源全文入口）已在 M3-6 补齐。
 
-**测试规模**：后端 70 passed（8 个文件）；前端 lint 0 warnings、build 通过
+**测试规模**：后端 76 passed（9 个文件）；前端 lint 0 warnings、build 通过
 
 ---
 
@@ -417,10 +421,10 @@ docker compose ps                          # db 应 healthy（api 可停）
 docker compose exec -T db psql -U knowledge -d knowledge -c "select 1;"
 
 cd backend
-uv run python -m pytest -q                 # 期望 70 passed
+uv run python -m pytest -q                 # 期望 76 passed
 uv run ruff check .                        # 期望 All checks passed
 uv run alembic current                     # 期望 8d1a0cbf84bd (head)
-uv run python -c "from app.main import app; p=app.openapi()['paths']; print(len(p), '条路径 /', sum(len(v) for v in p.values()), '个操作')"   # 期望 7 条路径 / 10 个操作
+uv run python -c "from app.main import app; p=app.openapi()['paths']; print(len(p), '条路径 /', sum(len(v) for v in p.values()), '个操作')"   # 期望 9 条路径 / 12 个操作
 
 # 起后端（宿主机）
 uv run uvicorn app.main:app --reload --port 8000
@@ -478,7 +482,7 @@ $runs.workflow_runs[0] | Select-Object name, head_sha, status, conclusion
 >
 > **当前进度**：M0 工程骨架 / M1 条目 CRUD / M2 文件解析（txt+md+pdf+噪音过滤+连带删除）/
 > **M3 AI 建议 + 完整前端（上传、可编辑确认表单、保存）——全部完成并已合并**
-> （PR #1 ~ #20，后端 70 个测试，CI 全绿）。
+> （PR #1 ~ #21，后端 76 个测试，CI 全绿）。
 >
 > **下一步是 M4（基础 RAG）**：PG 全文检索 + `keywords` 精确过滤 → 交给模型 →
 > 回答必须带真实条目与来源引用。前端要加一个"提问"界面。
