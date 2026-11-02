@@ -2,7 +2,12 @@ import { useEffect, useRef, useState } from "react";
 
 import "./App.css";
 import { api } from "./api";
-import type { KnowledgeEntry, Suggestion } from "./types";
+import type {
+  KnowledgeEntry,
+  KnowledgeSource,
+  KnowledgeSourceDetail,
+  Suggestion,
+} from "./types";
 
 const ACCEPT = ".txt,.md,.markdown,.pdf";
 
@@ -52,6 +57,11 @@ export default function App() {
   const [uploading, setUploading] = useState(false);
   const [asking, setAsking] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [sources, setSources] = useState<KnowledgeSource[]>([]);
+  const [viewingSource, setViewingSource] =
+    useState<KnowledgeSourceDetail | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   async function refresh(preferredId?: string) {
@@ -71,6 +81,49 @@ export default function App() {
     // 只在首次挂载时拉一次
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 切换条目时重新拉来源。依赖用 id 而不是对象：保存后 setSelected 会换对象，
+  // 但来源没变，不该重复请求。
+  useEffect(() => {
+    const entryId = selected?.id;
+    if (!entryId) {
+      setSources([]);
+      return;
+    }
+
+    let cancelled = false;
+    // 先清空，避免加载期间短暂显示上一条条目的来源
+    setSources([]);
+    api
+      .listEntrySources(entryId)
+      .then((list) => {
+        if (!cancelled) setSources(list);
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setError(e.message);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selected?.id]);
+
+  // 换条目就撤销"待确认删除"，避免把确认状态带到别的条目上
+  useEffect(() => {
+    setConfirmDelete(false);
+  }, [selected?.id]);
+
+  // Esc 关闭原文弹窗
+  useEffect(() => {
+    if (!viewingSource) return;
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setViewingSource(null);
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [viewingSource]);
 
   async function openEntry(id: string) {
     setError(null);
@@ -157,6 +210,42 @@ export default function App() {
     setError(null);
   }
 
+  async function openSource(sourceId: string) {
+    setError(null);
+    try {
+      setViewingSource(await api.getSource(sourceId));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  async function handleDelete() {
+    if (!selected) return;
+
+    // 第一次点击只进入确认态，第二次点击才真正删除（D-020 的二次确认）
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      setNotice(null);
+      return;
+    }
+
+    const title = selected.title;
+    setError(null);
+    setNotice(null);
+    setDeleting(true);
+    try {
+      await api.deleteEntry(selected.id);
+      setConfirmDelete(false);
+      setViewingSource(null);
+      await refresh();
+      setNotice(`已删除「${title}」，无其它引用的来源与原文一并清理`);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const dirty =
     selected !== null &&
     draft !== null &&
@@ -231,6 +320,27 @@ export default function App() {
                   建议来自 {suggestion.provider}
                   {suggestion.provider === "fake" && "（未配置真实模型）"}
                 </span>
+              )}
+              <button
+                type="button"
+                className="danger"
+                onClick={handleDelete}
+                disabled={deleting || saving}
+              >
+                {deleting ? "删除中……" : confirmDelete ? "确认删除？" : "删除"}
+              </button>
+              {confirmDelete && (
+                <>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => setConfirmDelete(false)}
+                    disabled={deleting}
+                  >
+                    取消
+                  </button>
+                  <span className="hint">条目、来源与原文一并清除，不可恢复</span>
+                </>
               )}
             </div>
 
@@ -309,9 +419,73 @@ export default function App() {
 
             <h3>正文</h3>
             <pre className="content">{selected.content}</pre>
+
+            <section className="sources">
+              <h3>来源（{sources.length}）</h3>
+              {sources.length === 0 ? (
+                <p className="muted">这条条目没有关联来源</p>
+              ) : (
+                <ul>
+                  {sources.map((source) => (
+                    <li key={source.id}>
+                      <span className="source-name">{source.source_name}</span>
+                      <span className="badge">{source.source_type}</span>
+                      {source.source_url && (
+                        <a
+                          href={source.source_url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          原始链接
+                        </a>
+                      )}
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => openSource(source.id)}
+                      >
+                        查看原文
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
           </>
         )}
       </main>
+
+      {viewingSource && (
+        <div className="modal-backdrop" onClick={() => setViewingSource(null)}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`来源原文：${viewingSource.source_name}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="modal-header">
+              <div>
+                <h2>{viewingSource.source_name}</h2>
+                <p className="hint">
+                  {viewingSource.source_type} ·{" "}
+                  {new Date(viewingSource.created_at).toLocaleString()}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setViewingSource(null)}
+              >
+                关闭
+              </button>
+            </header>
+            <pre className="content modal-content">
+              {viewingSource.extracted_text ?? "这条来源没有保存原文。"}
+            </pre>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

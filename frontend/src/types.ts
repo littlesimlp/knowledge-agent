@@ -27,6 +27,11 @@ export interface KnowledgeSource {
   created_at: string;
 }
 
+/** 来源详情：比列表多一份完整原文，只在"查看原文"时请求 */
+export interface KnowledgeSourceDetail extends KnowledgeSource {
+  extracted_text: string | null;
+}
+
 /** 上传/导入接口的返回：条目 + 来源 */
 export interface ImportResult {
   entry: KnowledgeEntry;
