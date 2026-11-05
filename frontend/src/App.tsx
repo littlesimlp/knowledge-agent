@@ -52,6 +52,8 @@ export default function App() {
   const [uploading, setUploading] = useState(false);
   const [asking, setAsking] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   async function refresh(preferredId?: string) {
@@ -71,6 +73,11 @@ export default function App() {
     // 只在首次挂载时拉一次
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 切换条目时撤销"待确认删除"，避免把确认状态带到别的条目上
+  useEffect(() => {
+    setConfirmDelete(false);
+  }, [selected?.id]);
 
   async function openEntry(id: string) {
     setError(null);
@@ -157,6 +164,32 @@ export default function App() {
     setError(null);
   }
 
+  async function handleDelete() {
+    if (!selected) return;
+
+    // 第一次点击只进入确认态，不发请求
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      setNotice(null);
+      return;
+    }
+
+    const title = selected.title;
+    setError(null);
+    setNotice(null);
+    setDeleting(true);
+    try {
+      await api.deleteEntry(selected.id);
+      setConfirmDelete(false);
+      await refresh();
+      setNotice(`已删除「${title}」`);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const dirty =
     selected !== null &&
     draft !== null &&
@@ -231,6 +264,28 @@ export default function App() {
                   建议来自 {suggestion.provider}
                   {suggestion.provider === "fake" && "（未配置真实模型）"}
                 </span>
+              )}
+
+              <button
+                type="button"
+                className="danger"
+                onClick={handleDelete}
+                disabled={deleting || saving}
+              >
+                {deleting ? "删除中……" : confirmDelete ? "确认删除？" : "删除"}
+              </button>
+              {confirmDelete && (
+                <>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => setConfirmDelete(false)}
+                    disabled={deleting}
+                  >
+                    取消
+                  </button>
+                  <span className="hint">删除后不可恢复</span>
+                </>
               )}
             </div>
 
