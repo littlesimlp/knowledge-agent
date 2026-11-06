@@ -5,8 +5,8 @@
 >
 > **维护规则**：每完成一个里程碑更新一次。只写结论和现状，不写过程流水账。
 
-- 最后更新：2026-11-05
-- 当前里程碑：**M4-1 检索已完成**；下一步 **M4-2（带引用的 RAG 问答）**
+- 最后更新：2026-11-06
+- 当前里程碑：**M4 已完成**（检索 + 带引用问答 + 前端提问框）；下一步 **M5（备份恢复 + 真实部署）**
 - 配套文档：`01-decisions.md`（24 条决策）、`02-env-notes.md`（环境差异）、**`03-issue-log.md`（问题全记录）**
 - 维护人：项目作者本人
 
@@ -45,7 +45,7 @@
 | 数据库 | **PostgreSQL 16-alpine**（Docker） | ✅ |
 | ORM | **SQLAlchemy 2.1（async + asyncpg）** | ✅ |
 | 迁移 | **Alembic**（`-t async` 模板） | ✅ |
-| 测试 | **pytest + pytest-asyncio + httpx** | ✅ 85 个测试 |
+| 测试 | **pytest + pytest-asyncio + httpx** | ✅ 96 个测试 |
 | Lint | **ruff**（显式规则集，见 D-013） | ✅ |
 | CI | **GitHub Actions**（Lint & Test + Docker build + 前端 lint/build） | ✅ |
 | 容器 | Docker Compose | ✅ |
@@ -94,7 +94,7 @@ D:\personal-agent\
     ├── data\                          # 上传文件落盘（git 已忽略；容器内为 /app/data）
     │   └── uploads\<uuid>.<ext>
     ├── app\
-    │   ├── main.py                    # 应用入口：挂 5 个 router + /（跳 /docs）+ /health
+    │   ├── main.py                    # 应用入口：挂 6 个 router + /（跳 /docs）+ /health
     │   ├── core\config.py             # pydantic-settings；DB_* 与 LLM_* 两组配置
     │   ├── db\
     │   │   ├── base.py                # DeclarativeBase
@@ -104,6 +104,7 @@ D:\personal-agent\
     │   │   ├── knowledge_source.py    # KnowledgeSource / KnowledgeEntrySource / SourceType
     │   │   └── __init__.py            # 必须在此导入，否则 autogenerate 看不到
     │   ├── schemas\                   # API 契约层（与 ORM 分离）
+    │   │   ├── ask.py                 # AskRequest / Citation / AskResponse
     │   │   ├── knowledge_entry.py     # Create / Read / Update（含 Keywords 规范化）
     │   │   ├── knowledge_source.py    # Read（不含 extracted_text）
     │   │   ├── imports.py             # TextImportRequest / Result
@@ -120,6 +121,7 @@ D:\personal-agent\
     │   │   ├── imports.py             # 来源+条目+关联 一次事务写入
     │   │   ├── storage.py             # 落盘（uuid 重命名，防路径穿越）
     │   │   ├── search.py              # 子串检索 + keywords 过滤（D-025）
+    │   │   ├── ask.py                 # 检索 + 生成 + 引用校验（D-026）
     │   │   └── llm\                   # 模型适配层（D-021）
     │   │       ├── base.py            # EntrySuggestion + LLMProvider 协议 + LLMError
     │   │       ├── openai_compat.py   # 一个实现支撑 DeepSeek / SiliconFlow
@@ -127,8 +129,8 @@ D:\personal-agent\
     │   │       └── __init__.py        # get_llm_provider 工厂
     │   └── api\
     │       ├── deps.py                # LLMDep + suggest_with_error_mapping
-    │       └── routes\                # entries(7) / imports(2) / search(1) / suggestions(1) / sources(1)
-    └── tests\                         # 85 个测试，10 个文件
+    │       └── routes\                # ask(1) / entries(7) / imports(2) / search(1) / suggestions(1) / sources(1)
+    └── tests\                         # 96 个测试，11 个文件
         ├── conftest.py                # 测试库 + 事务回滚隔离 + dependency_overrides
         ├── test_health.py             # 2
         ├── test_entries.py            # 12
@@ -139,7 +141,8 @@ D:\personal-agent\
         ├── test_llm.py                # 12
         ├── test_suggestions.py        # 10
         ├── test_sources.py            # 6
-        └── test_search.py             # 9
+        ├── test_search.py             # 9
+        └── test_ask.py                # 11
 ```
 
 ---
@@ -181,6 +184,7 @@ D:\personal-agent\
 | GET | `/api/entries/{id}/sources` | 200 / 404 | 关联来源列表，**不含全文** |
 | GET | `/api/sources/{id}` | 200 / 404 | 来源详情，含 `extracted_text`；跨空间一律 404 |
 | GET | `/api/search` | 200 / 422 | `q` 必填；可选 `keyword`、`limit`；返回 entry + snippet |
+| POST | `/api/ask` | 200 / 422 / 503 | `question` 必填、`limit` 1–10；返回 answer + citations + grounded |
 | POST | `/api/imports/text` | 201 / 422 | 导入粘贴文本（JSON body） |
 | POST | `/api/imports/file` | 201 / 413 / 415 / 422 | 导入文件（multipart），支持 txt/md/pdf |
 | POST | `/api/suggestions` | 200 / 503 | 对**一段纯文本**求 AI 整理建议，**不落库** |
@@ -291,23 +295,31 @@ PDF 实测：4772 → 4635 字符，每页精确删 2 行（页眉 + 页码）�
 数据库实测 `端到端验收-已确认 | 验收 | {e2e,确认写入,M3}`，
 删除后条目数与来源数相等（**无孤儿**，证明 D-020 的连带删除生效）。
 
-### M4（进行中）：检索与 RAG 问答
+### M4（已完成）：检索与 RAG 问答
 
 | 步骤 | 内容 | 状态 |
 |---|---|---|
 | M4-1 | `GET /api/search`：pg_trgm 子串 + keywords 过滤 + 片段（D-025） | ✅ 已完成 |
-| M4-2 | `POST /api/ask`：检索候选 → 模型回答 → **引用必须真实存在** | ⬜ 下一步 |
+| M4-2 | `POST /api/ask` + 前端提问框：编号引用 + 区间校验 + 降级（D-026） | ✅ 已完成 |
 
 **M4-1 的关键结论**：设计文档原计划 `to_tsvector('simple', ...)`，实测中文被整体当成一个 token
 （`to_tsvector('simple', '数据库连接池')` → `'数据库连接池'`，搜「数据库」不命中），
 因此改为 `ILIKE` 子串 + `pg_trgm` GIN 索引。代价是没有词干和相关度排序。
 
-新增迁移 `0de511119ced`（`pg_trgm` 扩展 + 两个 GIN 索引），新增 9 个测试（合计 85）。
+**M4-2 的关键结论**：模型只返回 `{"answer": "...", "citations": [1, 2]}` 这样的编号引用，
+服务端校验编号必须落在检索候选范围内；非法或为空就**丢弃模型回答**，返回固定话术
+（`grounded=false`，`reason=ungrounded`）。检索为空时**不调用模型**（`reason=no_results`）。
+这样"回答必须带真实条目引用"由代码保证，而不是靠 prompt。
+
+**待验收**：前端提问框的手工端到端（fake provider 下提问 → 引用跳转 → 删除后清空）尚未执行，
+合并前补一次并记录结果。
+
+新增迁移 `0de511119ced`（`pg_trgm` 扩展 + 两个 GIN 索引）；新增 9 个检索测试 + 11 个问答测试（合计 96）。
 
 - **M5**：备份恢复演练 + 真实部署给自己用
 - 待补：暂无。
 
-**测试规模**：后端 85 passed（10 个文件）；前端 lint 0 warnings、build 通过
+**测试规模**：后端 96 passed（11 个文件）；前端 lint 0 warnings、build 通过
 
 ---
 
@@ -433,10 +445,10 @@ docker compose ps                          # db 应 healthy（api 可停）
 docker compose exec -T db psql -U knowledge -d knowledge -c "select 1;"
 
 cd backend
-uv run python -m pytest -q                 # 期望 85 passed
+uv run python -m pytest -q                 # 期望 96 passed
 uv run ruff check .                        # 期望 All checks passed
 uv run alembic current                     # 期望 0de511119ced (head)
-uv run python -c "from app.main import app; p=app.openapi()['paths']; print(len(p), '条路径 /', sum(len(v) for v in p.values()), '个操作')"   # 期望 10 条路径 / 13 个操作
+uv run python -c "from app.main import app; p=app.openapi()['paths']; print(len(p), '条路径 /', sum(len(v) for v in p.values()), '个操作')"   # 期望 11 条路径 / 14 个操作
 
 # 起后端（宿主机）
 uv run uvicorn app.main:app --reload --port 8000
@@ -493,8 +505,7 @@ $runs.workflow_runs[0] | Select-Object name, head_sha, status, conclusion
 > 网络需要代理（`127.0.0.1:7890`），`curl.exe` 对部分站点 TLS 会失败（换 Node/Python）。
 >
 > **当前进度**：M0 工程骨架 / M1 条目 CRUD / M2 文件解析 / M3 AI 建议 + 前端 /
-> **M4-1 检索（pg_trgm 子串 + keywords 过滤）已完成**
-> （PR #1 ~ #22，后端 85 个测试，CI 全绿）。
+> **M4 检索 + 带引用问答（含前端提问框）已完成**
+> （后端 96 个测试，CI 全绿）。
 >
-> **下一步是 M4-2（RAG 问答）**：检索候选 → 模型回答 → 回答必须带真实条目引用；
-> 前端加一个"提问"界面。
+> **下一步是 M5**：备份恢复演练 + 真实部署给自己用。

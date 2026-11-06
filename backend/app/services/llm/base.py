@@ -4,6 +4,7 @@
 请求/响应格式（设计文档要求：模型供应商格式不应扩散到业务层，见 D-021）。
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -24,6 +25,17 @@ class EntrySuggestion:
         return not any((self.title, self.summary, self.keywords, self.category))
 
 
+@dataclass(frozen=True)
+class AnswerDraft:
+    """模型对问题的原始回答 + 它引用的资料编号（从 1 开始）。
+
+    编号是否合法由业务层校验——模型只负责说"我用了第几条"。
+    """
+
+    answer: str
+    citation_numbers: tuple[int, ...] = ()
+
+
 class LLMError(Exception):
     """模型调用失败，或返回内容无法使用。
 
@@ -32,8 +44,10 @@ class LLMError(Exception):
 
 
 class LLMProvider(Protocol):
-    """所有模型提供方都只实现这一个方法。"""
+    """所有模型提供方都实现这两个方法。"""
 
     name: str
 
     async def suggest_entry(self, text: str) -> EntrySuggestion: ...
+
+    async def answer(self, question: str, contexts: Sequence[str]) -> AnswerDraft: ...

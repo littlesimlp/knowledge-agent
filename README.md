@@ -10,8 +10,8 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.146-009688)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)
 
-**当前状态：M0–M3 完成，M4-1 检索已完成（中文子串 + pg_trgm 索引）——
-导入、AI 建议、确认式写入、来源追溯、删除均已跑通。下一步 M4-2：带引用的 RAG 问答。**
+**当前状态：M0–M4 代码完成——导入、AI 建议、确认式写入、来源追溯、删除、检索、
+带引用的问答（含前端提问框）均已实现。下一步 M5：备份恢复演练 + 真实部署。**
 进度、已知的坑与决策详见 [`docs/handoff/00-project-state.md`](docs/handoff/00-project-state.md)。
 
 ---
@@ -173,7 +173,7 @@ docker compose exec -T db psql -U knowledge -d knowledge -c "create database kno
 ```bash
 cd backend
 uv run python -m pytest -q
-# 85 passed
+# 96 passed
 ```
 
 测试用 `httpx.AsyncClient` + `ASGITransport` 在进程内直连 ASGI 应用，**不启动真实服务、不占端口**。
@@ -191,6 +191,7 @@ uv run python -m pytest -q
 | GET | `/api/entries/{id}/sources` | 200 / 404 | 条目关联的来源（**不含全文**） |
 | GET | `/api/sources/{id}` | 200 / 404 | 来源详情（含 `extracted_text` 全文） |
 | GET | `/api/search` | 200 / 422 | 检索：`q` 必填，可选 `keyword` / `limit` |
+| POST | `/api/ask` | 200 / 422 / 503 | 检索 + 模型回答，返回可核实引用与 `grounded` |
 | POST | `/api/imports/text` | 201 / 422 | 导入粘贴文本（JSON） |
 | POST | `/api/imports/file` | 201 / 413 / 415 / 422 | 导入文本文件（multipart） |
 | POST | `/api/suggestions` | 200 / 422 / 503 | 对一段纯文本求 AI 整理建议（**不落库**） |
@@ -265,6 +266,35 @@ curl "http://127.0.0.1:8000/api/search?q=docker&keyword=docker"
 
 已知边界：没有词干/相关度排序；查询少于 3 个字符时 trigram 索引用不上，会退化为顺序扫描。
 
+### 问知识库
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question":"Docker 数据卷和绑定挂载的区别？","limit":5}'
+```
+
+返回：
+
+```json
+{
+  "answer": "...",
+  "citations": [{ "entry_id": "...", "title": "...", "snippet": "..." }],
+  "grounded": true,
+  "reason": "ok",
+  "provider": "deepseek"
+}
+```
+
+三种结果：
+
+- `reason=ok` + `grounded=true`：至少有一条真实引用；
+- `reason=no_results` + `grounded=false`：检索为空，**不调用模型**，直接返回固定话术；
+- `reason=ungrounded` + `grounded=false`：模型没给出合法引用，丢弃回答，返回固定话术。
+
+引用用编号（`[1] [2]`）而不是 UUID：服务端只做整数区间校验，模型编不出一个"看起来像真的"的 id。
+`503` 表示模型不可用，前端应提示后让用户改用手动检索。取舍见 D-026。
+
 ## 项目结构
 
 ```
@@ -282,7 +312,7 @@ knowledge-agent/
 ├── frontend/                     # React 19 + TS + Vite（M3）
 │   ├── vite.config.ts            # host 127.0.0.1 + /api 代理到 8000
 │   └── src/
-│       ├── App.tsx               # 列表 + 详情 + 建议表单 + 上传
+│       ├── App.tsx               # 列表 + 详情 + 建议 + 上传 + 提问
 │       ├── api.ts                # 只写相对路径的 fetch 封装
 │       └── types.ts              # 与后端 schema 手工对齐
 └── backend/
@@ -297,10 +327,10 @@ knowledge-agent/
     │   ├── models/               # ORM 模型
     │   ├── schemas/              # 请求/响应契约
     │   ├── parsers/              # txt / md / pdf 解析 + 页眉页码清理
-    │   ├── services/             # 业务服务（导入、删除、落盘、检索、llm/ 适配层）
-    │   └── api/routes/           # entries / imports / search / suggestions / sources
+    │   ├── services/             # 业务服务（导入、删除、落盘、检索、问答、llm/ 适配层）
+    │   └── api/routes/           # ask / entries / imports / search / suggestions / sources
     ├── data/                     # 上传文件落盘（已 gitignore）
-    └── tests/                    # 85 个 pytest（独立测试库 + 事务回滚）
+    └── tests/                    # 96 个 pytest（独立测试库 + 事务回滚）
 ```
 
 ## 环境变量
@@ -420,10 +450,10 @@ chore(deps): bump fastapi to 0.147
 | M1 | 知识条目 CRUD：SQLAlchemy 模型、Alembic 迁移、REST 接口、独立测试库 | ✅ 完成 |
 | M2 | 文件解析（PDF / Markdown / TXT）+ 来源记录 | ✅ 完成 |
 | M3 | AI 整理建议（标题/摘要/关键词/分类）+ 前端确认式写入 | ✅ 完成 |
-| M4 | 检索与基础 RAG 问答 | 🔜 进行中 |
+| M4 | 检索与基础 RAG 问答 | ✅ 完成 |
 | M4-1 | 检索接口：pg_trgm 子串 + keywords 过滤 | ✅ 完成 |
-| M4-2 | RAG 问答：检索 → 带条目引用的回答 | ⬜ 下一步 |
-| M5 | 备份恢复演练 + 真实部署 | ⬜ |
+| M4-2 | RAG 问答：检索 + 引用校验 + 前端提问框 | ✅ 完成 |
+| M5 | 备份恢复演练 + 真实部署 | ⬜ 下一步 |
 
 ## License
 

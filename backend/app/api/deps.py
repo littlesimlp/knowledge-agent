@@ -15,6 +15,13 @@ from app.services.llm.base import LLMError, LLMProvider
 # 业务永远只看到 LLMProvider，看不到具体是哪家模型
 LLMDep = Annotated[LLMProvider, Depends(get_llm_provider)]
 
+def llm_unavailable(exc: LLMError) -> HTTPException:
+    """把模型调用失败统一映射成 503：上游依赖不可用，可重试或降级。"""
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail=f"AI 暂时不可用：{exc}",
+    )
+
 
 async def suggest_with_error_mapping(
     llm: LLMProvider,
@@ -28,11 +35,7 @@ async def suggest_with_error_mapping(
     try:
         suggestion = await llm.suggest_entry(text)
     except LLMError as exc:
-        # 503 而不是 500：这是"上游依赖不可用"，可以重试或降级
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"AI 暂时不可用：{exc}",
-        ) from exc
+        raise llm_unavailable(exc) from exc
 
     return SuggestionResponse(
         title=suggestion.title,

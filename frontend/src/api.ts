@@ -1,4 +1,5 @@
 import type {
+  AskResponse,
   EntryPatch,
   ImportResult,
   KnowledgeEntry,
@@ -66,6 +67,13 @@ export const api = {
   /** 来源详情：只有点"查看原文"时才拉全文 */
   getSource: (sourceId: string) =>
     request<KnowledgeSourceDetail>(`/api/sources/${sourceId}`),
+
+    /** 提问：后端检索 + 模型回答 + 引用校验 */
+  ask: (question: string, limit = 5) =>
+    request<AskResponse>("/api/ask", {
+      method: "POST",
+      body: JSON.stringify({ question, limit }),
+    }),
 
   /**
    * 上传文件。
