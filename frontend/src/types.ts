@@ -51,3 +51,21 @@ export interface Suggestion {
 export type EntryPatch = Partial<
   Pick<KnowledgeEntry, "title" | "summary" | "category" | "keywords">
 >;
+
+/** 问答接口的一条可核实引用 */
+export interface Citation {
+  entry_id: string;
+  title: string;
+  snippet: string;
+}
+
+export type AskReason = "ok" | "no_results" | "ungrounded";
+
+export interface AskResponse {
+  answer: string;
+  citations: Citation[];
+  grounded: boolean;
+  reason: AskReason;
+  /** 哪个 provider 生成的（fake / deepseek / siliconflow） */
+  provider: string;
+}

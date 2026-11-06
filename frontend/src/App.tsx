@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import "./App.css";
 import { api } from "./api";
 import type {
+  AskResponse,
   KnowledgeEntry,
   KnowledgeSource,
   KnowledgeSourceDetail,
@@ -62,6 +63,9 @@ export default function App() {
     useState<KnowledgeSourceDetail | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [question, setQuestion] = useState("");
+  const [askingQuestion, setAskingQuestion] = useState(false);
+  const [answer, setAnswer] = useState<AskResponse | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   async function refresh(preferredId?: string) {
@@ -237,12 +241,29 @@ export default function App() {
       await api.deleteEntry(selected.id);
       setConfirmDelete(false);
       setViewingSource(null);
+      setAnswer(null);
       await refresh();
       setNotice(`已删除「${title}」，无其它引用的来源与原文一并清理`);
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setDeleting(false);
+    }
+  }
+
+    async function handleAsk() {
+    const trimmed = question.trim();
+    if (!trimmed) return;
+
+    setError(null);
+    setNotice(null);
+    setAskingQuestion(true);
+    try {
+      setAnswer(await api.ask(trimmed));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setAskingQuestion(false);
     }
   }
 
@@ -294,7 +315,65 @@ export default function App() {
       <main className="detail">
         {error && <div className="error">{error}</div>}
         {notice && <div className="notice">{notice}</div>}
+        <section className="ask-box">
+          <form
+            className="ask-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleAsk();
+            }}
+          >
+            <input
+              value={question}
+              maxLength={500}
+              placeholder="问知识库，例如：Docker 数据卷和绑定挂载的区别？"
+              onChange={(event) => setQuestion(event.target.value)}
+              disabled={askingQuestion}
+            />
+            <button
+              type="submit"
+              disabled={askingQuestion || !question.trim()}
+            >
+              {askingQuestion ? "检索中……" : "提问"}
+            </button>
+          </form>
 
+          {answer && (
+            <div className={answer.grounded ? "answer" : "answer ungrounded"}>
+              <p className="answer-text">{answer.answer}</p>
+
+              {answer.citations.length > 0 && (
+                <div className="citations">
+                  <span className="muted">依据：</span>
+                  {answer.citations.map((citation) => (
+                    <button
+                      key={citation.entry_id}
+                      type="button"
+                      className="citation"
+                      title={citation.snippet}
+                      onClick={() => void openEntry(citation.entry_id)}
+                    >
+                      {citation.title}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {answer.grounded ? (
+                <p className="hint">
+                  回答来自 {answer.provider}
+                  {answer.provider === "fake" && "（未配置真实模型）"}
+                </p>
+              ) : (
+                <p className="hint">
+                  {answer.reason === "no_results"
+                    ? "知识库里还没有相关内容，可以导入资料后再问。"
+                    : "为避免展示没有依据的回答，这次不显示模型输出。"}
+                </p>
+              )}
+            </div>
+          )}
+        </section>
         {!selected && !error && (
           <p className="muted">从左侧选择一条知识，或导入一个文件</p>
         )}
