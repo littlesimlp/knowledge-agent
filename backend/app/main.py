@@ -3,10 +3,11 @@
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 
-from app.api.routes import entries, imports, search, sources, suggestions
+from app.api.routes import ask, entries, imports, search, sources, suggestions
 
 app = FastAPI(title="Knowledge Agent API", version="0.1.0")
 
+app.include_router(ask.router)
 app.include_router(entries.router)
 app.include_router(imports.router)
 app.include_router(search.router)
