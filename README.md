@@ -10,8 +10,8 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.146-009688)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)
 
-**当前状态：M0–M3 全部完成——`.md` / `.txt` / `.pdf` 导入（PDF 自动清理页眉和页码）、
-AI 整理建议、前端确认式写入已端到端跑通。下一步 M4：基础 RAG（全文检索 + 带来源引用的问答）。**
+**当前状态：M0–M3 完成，M4-1 检索已完成（中文子串 + pg_trgm 索引）——
+导入、AI 建议、确认式写入、来源追溯、删除均已跑通。下一步 M4-2：带引用的 RAG 问答。**
 进度、已知的坑与决策详见 [`docs/handoff/00-project-state.md`](docs/handoff/00-project-state.md)。
 
 ---
@@ -173,7 +173,7 @@ docker compose exec -T db psql -U knowledge -d knowledge -c "create database kno
 ```bash
 cd backend
 uv run python -m pytest -q
-# 76 passed
+# 85 passed
 ```
 
 测试用 `httpx.AsyncClient` + `ASGITransport` 在进程内直连 ASGI 应用，**不启动真实服务、不占端口**。
@@ -190,6 +190,7 @@ uv run python -m pytest -q
 | DELETE | `/api/entries/{id}` | 204 / 404 | 删除（连带清理孤儿来源与文件） |
 | GET | `/api/entries/{id}/sources` | 200 / 404 | 条目关联的来源（**不含全文**） |
 | GET | `/api/sources/{id}` | 200 / 404 | 来源详情（含 `extracted_text` 全文） |
+| GET | `/api/search` | 200 / 422 | 检索：`q` 必填，可选 `keyword` / `limit` |
 | POST | `/api/imports/text` | 201 / 422 | 导入粘贴文本（JSON） |
 | POST | `/api/imports/file` | 201 / 413 / 415 / 422 | 导入文本文件（multipart） |
 | POST | `/api/suggestions` | 200 / 422 / 503 | 对一段纯文本求 AI 整理建议（**不落库**） |
@@ -249,6 +250,21 @@ curl -X POST http://127.0.0.1:8000/api/entries \
 > ⚠️ **多行文本不要走 JSON 接口**——JSON 字符串不允许裸换行，会报 `422 Invalid control character`。
 > 真实笔记请用上面的 `multipart` 文件接口。
 
+### 检索笔记
+
+```bash
+curl "http://127.0.0.1:8000/api/search?q=连接池&limit=10"
+curl "http://127.0.0.1:8000/api/search?q=docker&keyword=docker"
+```
+
+返回 `[{ "entry": {...}, "snippet": "..." }]`，按「标题命中优先、其次最近更新」排序。
+
+中文**不能**用 PostgreSQL 全文检索的 `simple` 配置：它会把「数据库连接池」整体当成一个 token，
+搜「数据库」匹配不到（实测）。所以改用 `ILIKE` 子串检索，并用 `pg_trgm` 的 GIN 索引加速；
+`keyword` 走 `keywords @>` 精确过滤。取舍见决策 D-025。
+
+已知边界：没有词干/相关度排序；查询少于 3 个字符时 trigram 索引用不上，会退化为顺序扫描。
+
 ## 项目结构
 
 ```
@@ -281,10 +297,10 @@ knowledge-agent/
     │   ├── models/               # ORM 模型
     │   ├── schemas/              # 请求/响应契约
     │   ├── parsers/              # txt / md / pdf 解析 + 页眉页码清理
-    │   ├── services/             # 业务服务（导入、连带删除、落盘、llm/ 适配层）
-    │   └── api/routes/           # entries / imports / suggestions
+    │   ├── services/             # 业务服务（导入、删除、落盘、检索、llm/ 适配层）
+    │   └── api/routes/           # entries / imports / search / suggestions / sources
     ├── data/                     # 上传文件落盘（已 gitignore）
-    └── tests/                    # 76 个 pytest（独立测试库 + 事务回滚）
+    └── tests/                    # 85 个 pytest（独立测试库 + 事务回滚）
 ```
 
 ## 环境变量
@@ -404,7 +420,9 @@ chore(deps): bump fastapi to 0.147
 | M1 | 知识条目 CRUD：SQLAlchemy 模型、Alembic 迁移、REST 接口、独立测试库 | ✅ 完成 |
 | M2 | 文件解析（PDF / Markdown / TXT）+ 来源记录 | ✅ 完成 |
 | M3 | AI 整理建议（标题/摘要/关键词/分类）+ 前端确认式写入 | ✅ 完成 |
-| M4 | 基础 RAG 问答（PostgreSQL 全文检索 + 来源引用） | ⬜ 下一步 |
+| M4 | 检索与基础 RAG 问答 | 🔜 进行中 |
+| M4-1 | 检索接口：pg_trgm 子串 + keywords 过滤 | ✅ 完成 |
+| M4-2 | RAG 问答：检索 → 带条目引用的回答 | ⬜ 下一步 |
 | M5 | 备份恢复演练 + 真实部署 | ⬜ |
 
 ## License
