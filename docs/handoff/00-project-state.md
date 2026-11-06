@@ -327,7 +327,7 @@ PDF 实测：4772 → 4635 字符，每页精确删 2 行（页眉 + 页码）�
 
 ## 8. 关键技术决策摘要
 
-完整记录见 `01-decisions.md`。当前最重要的七条：
+完整记录见 `01-decisions.md`。当前最重要的八条：
 
 1. **全异步**（SQLAlchemy async + asyncpg）——项目核心是 AI，一次模型调用就是数秒 I/O（D-011）
 2. **数据库用命名卷，上传文件用 bind mount**——前者不需要人看，后者需要在资源管理器里看到（D-007）
@@ -336,6 +336,7 @@ PDF 实测：4772 → 4635 字符，每页精确删 2 行（页眉 + 页码）�
 5. **AI 不是必需品**——默认 `LLM_PROVIDER=fake`，模型不可用时基础功能照常（D-021）
 6. **服务层用协议隔离供应商格式**——业务层连 "DeepSeek" 这个词都看不到（D-021）
 7. **前端只写相对路径**——Vite 代理转发，生产同源部署零改动（D-023）
+8. **回答的引用由服务端校验**——模型只给编号，服务端做区间检查；非法就丢弃，不靠 prompt（D-026）
 
 ---
 
@@ -364,6 +365,9 @@ PDF 实测：4772 → 4635 字符，每页精确删 2 行（页眉 + 页码）�
 | **squash 合并后 `branch -d` 失效** | 原始提交不是 main 祖先 | 确认 PR 已 merged 后用 `git branch -D` |
 | **PR 标题就是提交信息** | main 出现 `Docs/m2 progress` 这类提交 | PR 标题必须符合 Conventional Commits（已写进模板） |
 | **分支基点太旧 → PR 冲突** | 差异里混入上一轮的 PR 内容 | `git reset --soft origin/main` 换基点；`push --force-with-lease` |
+| **squash 合并后在原分支继续提交** | GitHub 报冲突：分支上挂着已被 squash 的旧提交 | 不要硬解冲突；**从最新 main 切新分支，cherry-pick 剩余提交**，旧分支合并后删掉 |
+| **ruff 通过 ≠ 模块存在** | `ruff check .` 全绿，`pytest` 收集时报 `ModuleNotFoundError` | ruff 不解析 import；用 `pytest --collect-only -q` 或直接跑 pytest 验证能加载 |
+| **FakeProvider 绕过解析层** | 直接构造 `AnswerDraft(..., (1,1))`，绕过了 `parse_answer` 的去重 | 业务不变量（去重/范围校验）必须在 service 兜底，不能只靠适配层 |
 | **生成了迁移但没应用** | 测试绿（测试库由 metadata 建表），开发库缺列 | `alembic upgrade head` + `alembic current` 确认**测试绿 ≠ 已迁移** |
 | **容器镜像是代码的快照** | 新接口在本地有、容器里 404 | 开发用 `docker compose stop api` + 本地 uvicorn；交付验证才 rebuild |
 | **新版 FastAPI 的 `app.routes` 不可靠** | 遍历只看到 `/` 和 `/health` | 用 `app.openapi()["paths"]` 判断路由是否存在 |
