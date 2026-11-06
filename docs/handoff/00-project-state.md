@@ -6,8 +6,8 @@
 > **维护规则**：每完成一个里程碑更新一次。只写结论和现状，不写过程流水账。
 
 - 最后更新：2026-11-06
-- 当前里程碑：**M4 已完成**（检索 + 带引用问答 + 前端提问框）；下一步 **M5（备份恢复 + 真实部署）**
-- 配套文档：`01-decisions.md`（24 条决策）、`02-env-notes.md`（环境差异）、**`03-issue-log.md`（问题全记录）**
+- 当前里程碑：**M5-1a 备份恢复演练已完成**；下一步 **M5-1b 脚本化 + M5-2 部署**
+- 配套文档：`01-decisions.md`（26 条决策）、`02-env-notes.md`（环境差异）、`03-issue-log.md`（问题全记录）、**`04-backup-restore.md`（恢复演练）**
 - 维护人：项目作者本人
 
 ---
@@ -72,7 +72,7 @@ D:\personal-agent\
 ├── docs\
 │   ├── 01-srs.md                      # 需求规格说明书 V1.0
 │   ├── 02-design.md                   # 技术设计评审与实施基线 V1.0
-│   ├── handoff\                       # 本文件 + 01-decisions + 02-env-notes + 03-issue-log
+│   ├── handoff\                       # 本文件 + 01-decisions + 02-env-notes + 03-issue-log + 04-backup-restore
 │   └── journal\                       # 学习心得（内容不进 git，只提交 README.md）
 ├── frontend\                          # React 19 + TS + Vite 8（M3-4 起）
 │   ├── vite.config.ts                 # host 127.0.0.1 + /api 代理到 8000
@@ -323,6 +323,18 @@ PDF 实测：4772 → 4635 字符，每页精确删 2 行（页眉 + 页码）�
 
 **测试规模**：后端 96 passed（11 个文件）；前端 lint 0 warnings、build 通过
 
+### M5（进行中）：备份恢复与部署
+
+| 步骤 | 内容 | 状态 |
+|---|---|---|
+| M5-1a | 手工备份 + 恢复独立库/目录，校验行数与文件哈希 | ✅ 已完成（2026-11-06） |
+| M5-1b | 脚本化 + 一键演练（失败非零退出） | ⬜ 下一步 |
+| M5-2 | 同源部署（nginx + compose） | ⬜ |
+
+**M5-1a 证据**：`knowledge.dump` 22.9 KB + `uploads.tar.gz` 358.4 KB；备份 1.8 s、恢复 2.8 s；
+entries/sources/links 6/6/6 一致；4 个上传文件 SHA256 全等；恢复库上 entries/search/ask 均 200
+（`grounded=true`，1 条引用）；开发库未变。详见 `04-backup-restore.md`。
+
 ---
 
 ## 8. 关键技术决策摘要
@@ -489,11 +501,12 @@ $runs.workflow_runs[0] | Select-Object name, head_sha, status, conclusion
 > 我正在从零构建一个「Agent 驱动的个人知识库」，用于学习完整工程流程并作为 GitHub 作品集。
 > 仓库：https://github.com/littlesimlp/knowledge-agent 本地：`D:\personal-agent`
 >
-> **请先按顺序读完这四份文档，再开始任何操作：**
+> **请先按顺序读完这五份文档，再开始任何操作：**
 > 1. `docs/handoff/00-project-state.md`（现状、目录、API、坑表速查）
-> 2. `docs/handoff/01-decisions.md`（22 条已定决策 D-001 ~ D-022，改设计前必读）
+> 2. `docs/handoff/01-decisions.md`（26 条已定决策 D-001 ~ D-026，改设计前必读）
 > 3. `docs/handoff/03-issue-log.md`（所有踩过的坑：现象 → 根因 → 修复）
 > 4. `docs/handoff/02-env-notes.md`（本机与协作者机器的环境差异）
+> 5. `docs/handoff/04-backup-restore.md`（备份与恢复演练记录）
 >
 > **我的角色要求：你只做引导和评审，不要直接写文件或改文件，除非我明确说「你来写」。**
 > 每一步给我：做什么 → 验收标准 → 你会 review 什么。一次只给一个小目标。
@@ -511,7 +524,7 @@ $runs.workflow_runs[0] | Select-Object name, head_sha, status, conclusion
 > 网络需要代理（`127.0.0.1:7890`），`curl.exe` 对部分站点 TLS 会失败（换 Node/Python）。
 >
 > **当前进度**：M0 工程骨架 / M1 条目 CRUD / M2 文件解析 / M3 AI 建议 + 前端 /
-> **M4 检索 + 带引用问答（含前端提问框）已完成**
+> **M4 检索 + 带引用问答（含前端提问框）已完成；M5-1a 备份恢复演练已完成**
 > （后端 96 个测试，CI 全绿）。
 >
-> **下一步是 M5**：备份恢复演练 + 真实部署给自己用。
+> **下一步是 M5-1b / M5-2**：备份脚本化 + 同源部署给自己用。
