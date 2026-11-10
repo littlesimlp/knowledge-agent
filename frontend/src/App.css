@@ -212,6 +212,7 @@ body {
 }
 
 .field input,
+.field select,
 .field textarea {
   width: 100%;
   padding: 8px 10px;
@@ -225,10 +226,13 @@ body {
 }
 
 .field input:focus,
+.field select:focus,
 .field textarea:focus {
   outline: 2px solid rgba(80, 130, 255, 0.4);
   border-color: rgba(80, 130, 255, 0.8);
 }
+
+
 
 .actions {
   display: flex;
@@ -410,4 +414,56 @@ body {
   border: 1px solid #bbb;
   border-radius: 999px;
   font-size: 12px;
+}
+
+/* ---- 侧栏设置入口 ---- */
+.sidebar-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.link-button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: #888;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  color: inherit;
+}
+
+/* ---- 设置弹窗 ---- */
+.settings-modal {
+  width: min(560px, 100%);
+  overflow-y: auto;
+}
+
+.settings-modal .actions {
+  margin-top: 16px;
+}
+
+.settings-modal .actions button {
+  padding: 8px 16px;
+  border: 1px solid #888;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.settings-modal .actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.settings-message {
+  margin: 12px 0 0;
+  color: #666;
+  font-size: 13px;
+  white-space: pre-wrap;
 }

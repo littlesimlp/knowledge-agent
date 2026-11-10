@@ -7,6 +7,8 @@ import type {
   KnowledgeEntry,
   KnowledgeSource,
   KnowledgeSourceDetail,
+  LLMSettings,
+  LLMSettingsUpdate,
   Suggestion,
 } from "./types";
 
@@ -18,6 +20,14 @@ interface Draft {
   summary: string;
   category: string;
   keywords: string;
+}
+
+/** 设置弹窗的草稿；api_key 留空表示不修改 */
+interface SettingsForm {
+  provider: string;
+  base_url: string;
+  model: string;
+  api_key: string;
 }
 
 function toDraft(entry: KnowledgeEntry): Draft {
@@ -66,6 +76,18 @@ export default function App() {
   const [question, setQuestion] = useState("");
   const [askingQuestion, setAskingQuestion] = useState(false);
   const [answer, setAnswer] = useState<AskResponse | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settings, setSettings] = useState<LLMSettings | null>(null);
+  const [settingsForm, setSettingsForm] = useState<SettingsForm>({
+    provider: "fake",
+    base_url: "",
+    model: "",
+    api_key: "",
+  });
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsTesting, setSettingsTesting] = useState(false);
+  const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   async function refresh(preferredId?: string) {
@@ -118,16 +140,20 @@ export default function App() {
   }, [selected?.id]);
 
   // Esc 关闭原文弹窗
+  // Esc 关闭原文 / 设置弹窗
   useEffect(() => {
-    if (!viewingSource) return;
+    if (!viewingSource && !settingsOpen) return;
 
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setViewingSource(null);
+      if (event.key === "Escape") {
+        setViewingSource(null);
+        setSettingsOpen(false);
+      }
     }
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [viewingSource]);
+  }, [viewingSource, settingsOpen]);
 
   async function openEntry(id: string) {
     setError(null);
@@ -267,6 +293,108 @@ export default function App() {
     }
   }
 
+    async function openSettings() {
+    setViewingSource(null);
+    setSettingsOpen(true);
+    setSettingsLoading(true);
+    setSettingsMessage(null);
+    try {
+      const data = await api.getLlmSettings();
+      setSettings(data);
+      setSettingsForm({
+        provider: data.provider,
+        base_url: data.base_url,
+        model: data.model,
+        api_key: "",
+      });
+    } catch (e) {
+      setSettingsMessage(`读取失败：${(e as Error).message}`);
+    } finally {
+      setSettingsLoading(false);
+    }
+  }
+
+  async function persistSettings(clearKey = false) {
+    const payload: LLMSettingsUpdate = {
+      provider: settingsForm.provider,
+      base_url: settingsForm.base_url,
+      model: settingsForm.model,
+    };
+    if (clearKey) {
+      payload.clear_api_key = true;
+    } else if (settingsForm.api_key.trim()) {
+      payload.api_key = settingsForm.api_key.trim();
+    }
+
+    const data = await api.saveLlmSettings(payload);
+    setSettings(data);
+    setSettingsForm({
+      provider: data.provider,
+      base_url: data.base_url,
+      model: data.model,
+      api_key: "",
+    });
+    return data;
+  }
+
+  async function saveSettings() {
+    setSettingsSaving(true);
+    setSettingsMessage(null);
+    try {
+      await persistSettings();
+      setSettingsMessage("已保存，立即生效");
+    } catch (e) {
+      setSettingsMessage(`保存失败：${(e as Error).message}`);
+    } finally {
+      setSettingsSaving(false);
+    }
+  }
+
+  async function testSettings() {
+    setSettingsTesting(true);
+    setSettingsMessage(null);
+    try {
+      // 先保存，再测试，避免"改了没保存却以为在测新配置"
+      await persistSettings();
+      const result = await api.testLlmSettings();
+      setSettingsMessage(`连接成功（${result.provider}）`);
+    } catch (e) {
+      setSettingsMessage(`连接失败：${(e as Error).message}`);
+    } finally {
+      setSettingsTesting(false);
+    }
+  }
+
+  async function clearApiKey() {
+    setSettingsSaving(true);
+    setSettingsMessage(null);
+    try {
+      await persistSettings(true);
+      setSettingsMessage("已清除密钥");
+    } catch (e) {
+      setSettingsMessage(`清除失败：${(e as Error).message}`);
+    } finally {
+      setSettingsSaving(false);
+    }
+  }
+
+  async function resetSettings() {
+    setSettingsSaving(true);
+    setSettingsMessage(null);
+    try {
+      await api.resetLlmSettings();
+      await openSettings();
+      setSettingsMessage("已恢复 .env 配置");
+    } catch (e) {
+      setSettingsMessage(`恢复失败：${(e as Error).message}`);
+    } finally {
+      setSettingsSaving(false);
+    }
+  }
+
+  const canSubmitSettings =
+    settingsForm.provider === "fake" || settingsForm.model.trim().length > 0;
+
   const dirty =
     selected !== null &&
     draft !== null &&
@@ -277,8 +405,13 @@ export default function App() {
 
   return (
     <div className="layout">
-      <aside className="sidebar">
-        <h1>知识库</h1>
+        <aside className="sidebar">
+        <div className="sidebar-head">
+          <h1>知识库</h1>
+          <button type="button" className="link-button" onClick={openSettings}>
+            设置
+          </button>
+        </div>
         <p className="count">{entries.length} 条</p>
 
         <label className={"upload" + (uploading ? " busy" : "")}>
@@ -562,6 +695,150 @@ export default function App() {
             <pre className="content modal-content">
               {viewingSource.extracted_text ?? "这条来源没有保存原文。"}
             </pre>
+          </div>
+        </div>
+      )}
+
+            {settingsOpen && (
+        <div className="modal-backdrop" onClick={() => setSettingsOpen(false)}>
+          <div
+            className="modal settings-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="AI 设置"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="modal-header">
+              <div>
+                <h2>AI 设置</h2>
+                <p className="hint">
+                  保存在 backend/data/llm.json，不进数据库，也不进备份
+                </p>
+              </div>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setSettingsOpen(false)}
+              >
+                关闭
+              </button>
+            </header>
+
+            {settingsLoading ? (
+              <p className="muted">加载中……</p>
+            ) : (
+              <>
+                <label className="field">
+                  <span>Provider</span>
+                  <select
+                    value={settingsForm.provider}
+                    onChange={(event) =>
+                      setSettingsForm({
+                        ...settingsForm,
+                        provider: event.target.value,
+                      })
+                    }
+                  >
+                    <option value="fake">fake（不联网）</option>
+                    <option value="deepseek">deepseek</option>
+                    <option value="siliconflow">siliconflow</option>
+                  </select>
+                </label>
+
+                <label className="field">
+                  <span>Model</span>
+                  <input
+                    value={settingsForm.model}
+                    maxLength={200}
+                    placeholder="deepseek-chat / Qwen/Qwen2.5-7B-Instruct"
+                    onChange={(event) =>
+                      setSettingsForm({
+                        ...settingsForm,
+                        model: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+
+                <label className="field">
+                  <span>Base URL（留空用默认地址）</span>
+                  <input
+                    value={settingsForm.base_url}
+                    maxLength={2048}
+                    placeholder="https://api.deepseek.com/v1"
+                    onChange={(event) =>
+                      setSettingsForm({
+                        ...settingsForm,
+                        base_url: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+
+                <label className="field">
+                  <span>API Key</span>
+                  <input
+                    type="password"
+                    value={settingsForm.api_key}
+                    maxLength={2048}
+                    autoComplete="off"
+                    placeholder={
+                      settings?.api_key_configured
+                        ? `已配置 ${settings.api_key_hint ?? ""}，留空不修改`
+                        : "sk-..."
+                    }
+                    onChange={(event) =>
+                      setSettingsForm({
+                        ...settingsForm,
+                        api_key: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+
+                {!canSubmitSettings && (
+                  <p className="hint">真实模型必须填写 Model</p>
+                )}
+
+                {settingsMessage && (
+                  <p className="settings-message">{settingsMessage}</p>
+                )}
+
+                <div className="actions">
+                  <button
+                    type="button"
+                    onClick={saveSettings}
+                    disabled={!canSubmitSettings || settingsSaving}
+                  >
+                    {settingsSaving ? "保存中……" : "保存"}
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={testSettings}
+                    disabled={!canSubmitSettings || settingsTesting || settingsSaving}
+                  >
+                    {settingsTesting ? "测试中……" : "测试连接"}
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={clearApiKey}
+                    disabled={!settings?.api_key_configured || settingsSaving}
+                  >
+                    清除密钥
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={resetSettings}
+                    disabled={settingsSaving}
+                  >
+                    恢复 .env
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

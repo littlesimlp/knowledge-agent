@@ -69,3 +69,24 @@ export interface AskResponse {
   /** 哪个 provider 生成的（fake / deepseek / siliconflow） */
   provider: string;
 }
+
+export interface LLMSettings {
+  provider: string;
+  base_url: string;
+  model: string;
+  api_key_configured: boolean;
+  api_key_hint: string | null;
+}
+
+export interface LLMSettingsUpdate {
+  provider: string;
+  base_url?: string;
+  model?: string;
+  api_key?: string;
+  clear_api_key?: boolean;
+}
+
+export interface LLMTestResult {
+  ok: boolean;
+  provider: string;
+}
