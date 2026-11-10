@@ -10,8 +10,9 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.146-009688)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)
 
-**当前状态：M0–M4 代码完成——导入、AI 建议、确认式写入、来源追溯、删除、检索、
-带引用的问答（含前端提问框）均已实现。下一步 M5：备份恢复演练 + 真实部署。**
+**当前状态：M0–M4 完成，M5-1 备份恢复演练与 M5-2a 前端模型配置已完成——
+导入、AI 建议、确认式写入、来源追溯、删除、检索、引用问答、密钥设置均已实现。
+下一步 M5-2b：同源部署。**
 进度、已知的坑与决策详见 [`docs/handoff/00-project-state.md`](docs/handoff/00-project-state.md)。
 
 ---
@@ -173,7 +174,7 @@ docker compose exec -T db psql -U knowledge -d knowledge -c "create database kno
 ```bash
 cd backend
 uv run python -m pytest -q
-# 96 passed
+# 107 passed
 ```
 
 测试用 `httpx.AsyncClient` + `ASGITransport` 在进程内直连 ASGI 应用，**不启动真实服务、不占端口**。
@@ -192,6 +193,10 @@ uv run python -m pytest -q
 | GET | `/api/sources/{id}` | 200 / 404 | 来源详情（含 `extracted_text` 全文） |
 | GET | `/api/search` | 200 / 422 | 检索：`q` 必填，可选 `keyword` / `limit` |
 | POST | `/api/ask` | 200 / 422 / 503 | 检索 + 模型回答，返回可核实引用与 `grounded` |
+| GET | `/api/settings/llm` | 200 | 读取 LLM 配置（key 打码） |
+| PUT | `/api/settings/llm` | 200 / 422 | 保存配置；`api_key` 不传=保持，`clear_api_key`=清除 |
+| DELETE | `/api/settings/llm` | 204 | 恢复 `.env` 配置 |
+| POST | `/api/settings/llm/test` | 200 / 503 | 用当前配置测试模型连接 |
 | POST | `/api/imports/text` | 201 / 422 | 导入粘贴文本（JSON） |
 | POST | `/api/imports/file` | 201 / 413 / 415 / 422 | 导入文本文件（multipart） |
 | POST | `/api/suggestions` | 200 / 422 / 503 | 对一段纯文本求 AI 整理建议（**不落库**） |
@@ -295,6 +300,15 @@ curl -X POST http://127.0.0.1:8000/api/ask \
 引用用编号（`[1] [2]`）而不是 UUID：服务端只做整数区间校验，模型编不出一个"看起来像真的"的 id。
 `503` 表示模型不可用，前端应提示后让用户改用手动检索。取舍见 D-026。
 
+### 在界面里配置模型
+
+侧栏「设置」可配置 provider / base_url / model / api_key。配置保存在
+`backend/data/llm.json`，**优先级高于 `.env`**，保存后立即生效；「恢复 .env」会删除该文件。
+
+- key 只写不读回：接口只返回「是否已配置」和后 4 位；
+- 文件不进数据库，也不进 `drill.py` 的备份包，恢复后需要重新填；
+- 没有鉴权，服务只绑 `127.0.0.1`；开放到局域网前必须先加认证（见 D-027）。
+
 ## 项目结构
 
 ```
@@ -312,7 +326,7 @@ knowledge-agent/
 ├── frontend/                     # React 19 + TS + Vite（M3）
 │   ├── vite.config.ts            # host 127.0.0.1 + /api 代理到 8000
 │   └── src/
-│       ├── App.tsx               # 列表 + 详情 + 建议 + 上传 + 提问
+│       ├── App.tsx               # 列表 + 详情 + 建议 + 上传 + 提问 + 设置
 │       ├── api.ts                # 只写相对路径的 fetch 封装
 │       └── types.ts              # 与后端 schema 手工对齐
 └── backend/
@@ -327,10 +341,10 @@ knowledge-agent/
     │   ├── models/               # ORM 模型
     │   ├── schemas/              # 请求/响应契约
     │   ├── parsers/              # txt / md / pdf 解析 + 页眉页码清理
-    │   ├── services/             # 业务服务（导入、删除、落盘、检索、问答、llm/ 适配层）
-    │   └── api/routes/           # ask / entries / imports / search / suggestions / sources
+    │   ├── services/             # 业务服务（导入、删除、落盘、检索、问答、配置、llm/ 适配层）
+    │   └── api/routes/           # ask / entries / imports / search / settings / suggestions / sources
     ├── data/                     # 上传文件落盘（已 gitignore）
-    └── tests/                    # 96 个 pytest（独立测试库 + 事务回滚）
+    └── tests/                    # 107 个 pytest（独立测试库 + 事务回滚）
 ```
 
 ## 环境变量
@@ -343,7 +357,7 @@ knowledge-agent/
 | `POSTGRES_PASSWORD` | 数据库密码（本地开发用，不要复用真实密码） |
 | `POSTGRES_DB` | 数据库名 |
 | `LLM_PROVIDER` | `fake`（默认，不联网）/ `deepseek` / `siliconflow` |
-| `LLM_API_KEY` | 真实 key，只放 `.env`，不进库 |
+| `LLM_API_KEY` | 真实 key；也可在界面「设置」里配置（优先于 `.env`） |
 | `LLM_BASE_URL` | 留空则用 provider 默认地址 |
 | `LLM_MODEL` | 必须显式填（如 `deepseek-chat`），不设默认值 |
 | `LLM_TIMEOUT_SECONDS` | 模型调用超时，默认 30 秒 |
@@ -351,6 +365,8 @@ knowledge-agent/
 
 应用侧的连接参数（`DB_HOST` 等）默认值为本机 `127.0.0.1:5432`；在 Docker Compose 里会被覆盖成服务名 `db`。
 所以同一份配置既能在容器里跑、也能在宿主机跑。
+
+> 界面里保存的配置写入 `backend/data/llm.json`，优先于上表；删除该文件即回退到 `.env`。
 
 新增配置项时，**必须同步更新 `.env.example`**，否则其他人拉下来会启动失败。
 
@@ -441,6 +457,8 @@ chore(deps): bump fastapi to 0.147
 | [`docs/02-design.md`](docs/02-design.md) | 技术设计与实施基线 | 所有人 |
 | [`docs/handoff/00-project-state.md`](docs/handoff/00-project-state.md) | **项目当前状态、进度、已知的坑** | **新人必读** |
 | [`docs/handoff/01-decisions.md`](docs/handoff/01-decisions.md) | 技术决策记录（为什么这样选） | 所有人 |
+| [`docs/handoff/03-issue-log.md`](docs/handoff/03-issue-log.md) | 问题全记录（现象 → 根因 → 修复） | 所有人 |
+| [`docs/handoff/04-backup-restore.md`](docs/handoff/04-backup-restore.md) | 备份与恢复演练、RPO/RTO | 部署/运维 |
 
 ## 路线图
 
@@ -453,7 +471,11 @@ chore(deps): bump fastapi to 0.147
 | M4 | 检索与基础 RAG 问答 | ✅ 完成 |
 | M4-1 | 检索接口：pg_trgm 子串 + keywords 过滤 | ✅ 完成 |
 | M4-2 | RAG 问答：检索 + 引用校验 + 前端提问框 | ✅ 完成 |
-| M5 | 备份恢复演练 + 真实部署 | ⬜ 下一步 |
+| M5 | 备份恢复 + 运行时配置 + 真实部署 | 🔜 进行中 |
+| M5-1a | 手工备份/恢复演练 | ✅ 完成 |
+| M5-1b | 一键演练脚本 `scripts/drill.py` | ✅ 完成 |
+| M5-2a | 前端配置 provider / model / key | ✅ 完成 |
+| M5-2b | 同源部署（nginx + compose） | ⬜ 下一步 |
 
 ## License
 

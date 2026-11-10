@@ -11,6 +11,7 @@
 | 上传文件 | `backend/data/uploads/`（bind mount） | ✅ `tar.gz` |
 | 代码 | git 仓库 | ❌ 由 git 管理 |
 | `.env` / 密钥 | 本机文件 | ❌ **不进备份包**，单独存密码管理器 |
+| 前端保存的 LLM 配置 | `backend/data/llm.json` | ❌ 含 key，不进备份包；恢复后重新填 |
 | 备份产物 | `backups/`（本机） | ❌ 已 gitignore |
 
 ## 2. 一次完整备份
@@ -130,7 +131,7 @@ $res.citations.Count
 
 - 备份和数据在同一台机器（`D:\personal-agent\backups`），**不能防磁盘损坏**；需要异地/云盘副本。
 - 备份未加密；dump 包含全部知识正文，注意存放权限。
-- `.env` 不在包内；恢复后需要单独还原配置。
+- `.env` 和 `backend/data/llm.json` 不在包内；恢复后需要单独还原配置、重新填 key。
 - 脚本已覆盖本地演练，但依赖本机 Docker Compose；CI 里还没有自动跑恢复演练。
 - `knowledge_restore` 是一次性库，演练后应删除，避免占用。
 
