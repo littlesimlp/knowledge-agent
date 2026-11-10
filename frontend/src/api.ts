@@ -5,6 +5,9 @@ import type {
   KnowledgeEntry,
   KnowledgeSource,
   KnowledgeSourceDetail,
+  LLMSettings,
+  LLMSettingsUpdate,
+  LLMTestResult,
   Suggestion,
 } from "./types";
 
@@ -74,6 +77,20 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ question, limit }),
     }),
+
+    getLlmSettings: () => request<LLMSettings>("/api/settings/llm"),
+
+  saveLlmSettings: (payload: LLMSettingsUpdate) =>
+    request<LLMSettings>("/api/settings/llm", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+
+  resetLlmSettings: () =>
+    request<void>("/api/settings/llm", { method: "DELETE" }),
+
+  testLlmSettings: () =>
+    request<LLMTestResult>("/api/settings/llm/test", { method: "POST" }),
 
   /**
    * 上传文件。
