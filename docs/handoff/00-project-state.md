@@ -6,7 +6,7 @@
 > **维护规则**：每完成一个里程碑更新一次。只写结论和现状，不写过程流水账。
 
 - 最后更新：2026-11-06
-- 当前里程碑：**M5-1a 备份恢复演练已完成**；下一步 **M5-1b 脚本化 + M5-2 部署**
+- 当前里程碑：**M5-1b 一键演练已完成**；下一步 **M5-2 同源部署**
 - 配套文档：`01-decisions.md`（26 条决策）、`02-env-notes.md`（环境差异）、`03-issue-log.md`（问题全记录）、**`04-backup-restore.md`（恢复演练）**
 - 维护人：项目作者本人
 
@@ -130,6 +130,7 @@ D:\personal-agent\
     │   └── api\
     │       ├── deps.py                # LLMDep + suggest_with_error_mapping
     │       └── routes\                # ask(1) / entries(7) / imports(2) / search(1) / suggestions(1) / sources(1)
+    ├── scripts\                       # 运维脚本（drill.py：备份恢复演练）
     └── tests\                         # 96 个测试，11 个文件
         ├── conftest.py                # 测试库 + 事务回滚隔离 + dependency_overrides
         ├── test_health.py             # 2
@@ -328,12 +329,16 @@ PDF 实测：4772 → 4635 字符，每页精确删 2 行（页眉 + 页码）�
 | 步骤 | 内容 | 状态 |
 |---|---|---|
 | M5-1a | 手工备份 + 恢复独立库/目录，校验行数与文件哈希 | ✅ 已完成（2026-11-06） |
-| M5-1b | 脚本化 + 一键演练（失败非零退出） | ⬜ 下一步 |
-| M5-2 | 同源部署（nginx + compose） | ⬜ |
+| M5-1b | `backend/scripts/drill.py`：一键备份 + 恢复 + 校验，失败非零退出 | ✅ 已完成（2026-11-10） |
+| M5-2 | 同源部署（nginx + compose） | ⬜ 下一步 |
 
 **M5-1a 证据**：`knowledge.dump` 22.9 KB + `uploads.tar.gz` 358.4 KB；备份 1.8 s、恢复 2.8 s；
 entries/sources/links 6/6/6 一致；4 个上传文件 SHA256 全等；恢复库上 entries/search/ask 均 200
-（`grounded=true`，1 条引用）；开发库未变。详见 `04-backup-restore.md`。
+（`grounded=true`，1 条引用）；开发库未变。
+
+**M5-1b 证据**：首次 PASS（备份 11.1 s / 恢复 2.6 s），二次 PASS（1.4 s / 2.4 s），
+行数 6/6/6、文件 4/4 SHA256 全等；停 db 后退出码 1、`result : FAIL`。
+详见 `04-backup-restore.md`。
 
 ---
 
@@ -524,7 +529,7 @@ $runs.workflow_runs[0] | Select-Object name, head_sha, status, conclusion
 > 网络需要代理（`127.0.0.1:7890`），`curl.exe` 对部分站点 TLS 会失败（换 Node/Python）。
 >
 > **当前进度**：M0 工程骨架 / M1 条目 CRUD / M2 文件解析 / M3 AI 建议 + 前端 /
-> **M4 检索 + 带引用问答（含前端提问框）已完成；M5-1a 备份恢复演练已完成**
+> **M4 检索 + 带引用问答已完成；M5-1a 手工演练 + M5-1b 一键脚本已完成**
 > （后端 96 个测试，CI 全绿）。
 >
-> **下一步是 M5-1b / M5-2**：备份脚本化 + 同源部署给自己用。
+> **下一步是 M5-2**：同源部署（nginx + compose）给自己用。
