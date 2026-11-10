@@ -6,8 +6,8 @@
 > **维护规则**：每完成一个里程碑更新一次。只写结论和现状，不写过程流水账。
 
 - 最后更新：2026-11-06
-- 当前里程碑：**M5-1b 一键演练已完成**；下一步 **M5-2 同源部署**
-- 配套文档：`01-decisions.md`（26 条决策）、`02-env-notes.md`（环境差异）、`03-issue-log.md`（问题全记录）、**`04-backup-restore.md`（恢复演练）**
+- 当前里程碑：**M5-2a 运行时模型配置已完成**；下一步 **M5-2b 同源部署**
+- 配套文档：`01-decisions.md`（27 条决策）、`02-env-notes.md`（环境差异）、`03-issue-log.md`（问题全记录）、**`04-backup-restore.md`（恢复演练）**
 - 维护人：项目作者本人
 
 ---
@@ -45,7 +45,7 @@
 | 数据库 | **PostgreSQL 16-alpine**（Docker） | ✅ |
 | ORM | **SQLAlchemy 2.1（async + asyncpg）** | ✅ |
 | 迁移 | **Alembic**（`-t async` 模板） | ✅ |
-| 测试 | **pytest + pytest-asyncio + httpx** | ✅ 96 个测试 |
+| 测试 | **pytest + pytest-asyncio + httpx** | ✅ 107 个测试 |
 | Lint | **ruff**（显式规则集，见 D-013） | ✅ |
 | CI | **GitHub Actions**（Lint & Test + Docker build + 前端 lint/build） | ✅ |
 | 容器 | Docker Compose | ✅ |
@@ -109,6 +109,7 @@ D:\personal-agent\
     │   │   ├── knowledge_source.py    # Read（不含 extracted_text）
     │   │   ├── imports.py             # TextImportRequest / Result
     │   │   ├── search.py              # SearchHit（条目 + 片段）
+    │   │   ├── settings.py            # 运行时 LLM 配置契约
     │   │   └── suggestions.py         # SuggestionRequest / Response
     │   ├── parsers\                   # 可插拔解析器
     │   │   ├── base.py                # ParseResult（含 pages）+ ParseStatus
@@ -122,6 +123,7 @@ D:\personal-agent\
     │   │   ├── storage.py             # 落盘（uuid 重命名，防路径穿越）
     │   │   ├── search.py              # 子串检索 + keywords 过滤（D-025）
     │   │   ├── ask.py                 # 检索 + 生成 + 引用校验（D-026）
+    │   │   ├── llm_config.py          # 运行时 LLM 配置（文件 > env，D-027）
     │   │   └── llm\                   # 模型适配层（D-021）
     │   │       ├── base.py            # EntrySuggestion + LLMProvider 协议 + LLMError
     │   │       ├── openai_compat.py   # 一个实现支撑 DeepSeek / SiliconFlow
@@ -129,9 +131,9 @@ D:\personal-agent\
     │   │       └── __init__.py        # get_llm_provider 工厂
     │   └── api\
     │       ├── deps.py                # LLMDep + suggest_with_error_mapping
-    │       └── routes\                # ask(1) / entries(7) / imports(2) / search(1) / suggestions(1) / sources(1)
+    │       └── routes\                # ask(1) / entries(7) / imports(2) / search(1) / settings(4) / suggestions(1) / sources(1)
     ├── scripts\                       # 运维脚本（drill.py：备份恢复演练）
-    └── tests\                         # 96 个测试，11 个文件
+    └── tests\                         # 107 个测试，12 个文件
         ├── conftest.py                # 测试库 + 事务回滚隔离 + dependency_overrides
         ├── test_health.py             # 2
         ├── test_entries.py            # 12
@@ -143,7 +145,8 @@ D:\personal-agent\
         ├── test_suggestions.py        # 10
         ├── test_sources.py            # 6
         ├── test_search.py             # 9
-        └── test_ask.py                # 11
+        ├── test_ask.py                # 11
+        └── test_settings.py           # 11
 ```
 
 ---
@@ -186,6 +189,10 @@ D:\personal-agent\
 | GET | `/api/sources/{id}` | 200 / 404 | 来源详情，含 `extracted_text`；跨空间一律 404 |
 | GET | `/api/search` | 200 / 422 | `q` 必填；可选 `keyword`、`limit`；返回 entry + snippet |
 | POST | `/api/ask` | 200 / 422 / 503 | `question` 必填、`limit` 1–10；返回 answer + citations + grounded |
+| GET | `/api/settings/llm` | 200 | LLM 配置（key 打码，只给后 4 位） |
+| PUT | `/api/settings/llm` | 200 / 422 | 保存；`api_key` 不传=保持，`clear_api_key`=清除 |
+| DELETE | `/api/settings/llm` | 204 | 删除覆盖文件，回退 `.env` |
+| POST | `/api/settings/llm/test` | 200 / 503 | 用当前配置测试模型连接 |
 | POST | `/api/imports/text` | 201 / 422 | 导入粘贴文本（JSON body） |
 | POST | `/api/imports/file` | 201 / 413 / 415 / 422 | 导入文件（multipart），支持 txt/md/pdf |
 | POST | `/api/suggestions` | 200 / 503 | 对**一段纯文本**求 AI 整理建议，**不落库** |
@@ -322,7 +329,7 @@ PDF 实测：4772 → 4635 字符，每页精确删 2 行（页眉 + 页码）�
 - **M5**：备份恢复演练 + 真实部署给自己用
 - 待补：暂无。
 
-**测试规模**：后端 96 passed（11 个文件）；前端 lint 0 warnings、build 通过
+**测试规模**：后端 107 passed（12 个文件）；前端 lint 0 warnings、build 通过
 
 ### M5（进行中）：备份恢复与部署
 
@@ -330,7 +337,8 @@ PDF 实测：4772 → 4635 字符，每页精确删 2 行（页眉 + 页码）�
 |---|---|---|
 | M5-1a | 手工备份 + 恢复独立库/目录，校验行数与文件哈希 | ✅ 已完成（2026-11-06） |
 | M5-1b | `backend/scripts/drill.py`：一键备份 + 恢复 + 校验，失败非零退出 | ✅ 已完成（2026-11-10） |
-| M5-2 | 同源部署（nginx + compose） | ⬜ 下一步 |
+| M5-2a | 前端配置 provider / model / key，文件存储（D-027） | ✅ 已完成（2026-11-10） |
+| M5-2b | 同源部署（nginx + compose） | ⬜ 下一步 |
 
 **M5-1a 证据**：`knowledge.dump` 22.9 KB + `uploads.tar.gz` 358.4 KB；备份 1.8 s、恢复 2.8 s；
 entries/sources/links 6/6/6 一致；4 个上传文件 SHA256 全等；恢复库上 entries/search/ask 均 200
@@ -340,11 +348,14 @@ entries/sources/links 6/6/6 一致；4 个上传文件 SHA256 全等；恢复库
 行数 6/6/6、文件 4/4 SHA256 全等；停 db 后退出码 1、`result : FAIL`。
 详见 `04-backup-restore.md`。
 
+**M5-2a 证据**：107 个后端测试、13 条路径 / 18 个操作；界面 7 步手工验收通过；
+配置写入 `backend/data/llm.json`（不进 DB、不进备份），保存后无需重启。
+
 ---
 
 ## 8. 关键技术决策摘要
 
-完整记录见 `01-decisions.md`。当前最重要的八条：
+完整记录见 `01-decisions.md`。当前最重要的九条：
 
 1. **全异步**（SQLAlchemy async + asyncpg）——项目核心是 AI，一次模型调用就是数秒 I/O（D-011）
 2. **数据库用命名卷，上传文件用 bind mount**——前者不需要人看，后者需要在资源管理器里看到（D-007）
@@ -354,6 +365,7 @@ entries/sources/links 6/6/6 一致；4 个上传文件 SHA256 全等；恢复库
 6. **服务层用协议隔离供应商格式**——业务层连 "DeepSeek" 这个词都看不到（D-021）
 7. **前端只写相对路径**——Vite 代理转发，生产同源部署零改动（D-023）
 8. **回答的引用由服务端校验**——模型只给编号，服务端做区间检查；非法就丢弃，不靠 prompt（D-026）
+9. **密钥由前端配置、文件存储**——`data/llm.json` 优先于 `.env`，只写不读回，不进 DB/备份（D-027）
 
 ---
 
@@ -388,6 +400,7 @@ entries/sources/links 6/6/6 一致；4 个上传文件 SHA256 全等；恢复库
 | **生成了迁移但没应用** | 测试绿（测试库由 metadata 建表），开发库缺列 | `alembic upgrade head` + `alembic current` 确认**测试绿 ≠ 已迁移** |
 | **容器镜像是代码的快照** | 新接口在本地有、容器里 404 | 开发用 `docker compose stop api` + 本地 uvicorn；交付验证才 rebuild |
 | **新版 FastAPI 的 `app.routes` 不可靠** | 遍历只看到 `/` 和 `/health` | 用 `app.openapi()["paths"]` 判断路由是否存在 |
+| **router 被 include 两次** | OpenAPI 出现 `Duplicate Operation ID` 警告，接口仍能访问 | 挂载后看启动 warning；`paths` 的路径数不会暴露重复 |
 | **Vite 默认只监听 IPv6** | `curl 127.0.0.1:5173` 连不上 | `vite.config.ts` 里 `host: "127.0.0.1"` |
 | **`curl: (7) Failed to connect`** | — | **永远是"服务没起"**；`HTTP 404` 才是"服务在跑但没这个路由" |
 | **中文路径经管道传给 Python** | `FileNotFoundError: 'F:\??\...'` | 脚本体保持纯 ASCII，路径走环境变量 |
@@ -468,10 +481,10 @@ docker compose ps                          # db 应 healthy（api 可停）
 docker compose exec -T db psql -U knowledge -d knowledge -c "select 1;"
 
 cd backend
-uv run python -m pytest -q                 # 期望 96 passed
+uv run python -m pytest -q                 # 期望 107 passed
 uv run ruff check .                        # 期望 All checks passed
 uv run alembic current                     # 期望 0de511119ced (head)
-uv run python -c "from app.main import app; p=app.openapi()['paths']; print(len(p), '条路径 /', sum(len(v) for v in p.values()), '个操作')"   # 期望 11 条路径 / 14 个操作
+uv run python -c "from app.main import app; p=app.openapi()['paths']; print(len(p), '条路径 /', sum(len(v) for v in p.values()), '个操作')"   # 期望 13 条路径 / 18 个操作
 
 # 起后端（宿主机）
 uv run uvicorn app.main:app --reload --port 8000
@@ -508,7 +521,7 @@ $runs.workflow_runs[0] | Select-Object name, head_sha, status, conclusion
 >
 > **请先按顺序读完这五份文档，再开始任何操作：**
 > 1. `docs/handoff/00-project-state.md`（现状、目录、API、坑表速查）
-> 2. `docs/handoff/01-decisions.md`（26 条已定决策 D-001 ~ D-026，改设计前必读）
+> 2. `docs/handoff/01-decisions.md`（27 条已定决策 D-001 ~ D-027，改设计前必读）
 > 3. `docs/handoff/03-issue-log.md`（所有踩过的坑：现象 → 根因 → 修复）
 > 4. `docs/handoff/02-env-notes.md`（本机与协作者机器的环境差异）
 > 5. `docs/handoff/04-backup-restore.md`（备份与恢复演练记录）
@@ -529,7 +542,7 @@ $runs.workflow_runs[0] | Select-Object name, head_sha, status, conclusion
 > 网络需要代理（`127.0.0.1:7890`），`curl.exe` 对部分站点 TLS 会失败（换 Node/Python）。
 >
 > **当前进度**：M0 工程骨架 / M1 条目 CRUD / M2 文件解析 / M3 AI 建议 + 前端 /
-> **M4 检索 + 带引用问答已完成；M5-1a 手工演练 + M5-1b 一键脚本已完成**
-> （后端 96 个测试，CI 全绿）。
+> **M4 检索 + 带引用问答；M5-1a/1b 备份恢复演练；M5-2a 前端模型配置——均已完成**
+> （后端 107 个测试，CI 全绿）。
 >
-> **下一步是 M5-2**：同源部署（nginx + compose）给自己用。
+> **下一步是 M5-2b**：同源部署（nginx + compose）给自己用。
